@@ -22,6 +22,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# ---- Built-in Browser MCP (Playwright) -------------------------------------
+# Bake @playwright/mcp + Chromium into the image so the optional Browser MCP
+# server (src/builtin_mcp.py) registers at startup instead of being skipped.
+# Without this the slim base lacks both the npx-cached package AND Chromium's
+# shared libs, so the server self-disables with a "not installed" warning.
+#
+# Placement matters for two reasons:
+#   * Runtime runs as PUID:PGID with HOME=/app (see docker/entrypoint.sh), so
+#     the npx cache must sit at /app/.npm and browsers at /app/.cache/ms-
+#     playwright (HOME's default) for `npx --no-install @playwright/mcp@latest`
+#     to find them. Both are inside /app, which the entrypoint chowns to the
+#     run user on boot; neither path is a bind-mount, so they stay in the image.
+#   * The startup cache probe keys the npx cache on the literal spec string, so
+#     pre-populating "@playwright/mcp@latest" here is exactly what the gate in
+#     builtin_mcp.py:_is_npx_package_cached looks for.
+#
+# `--with-deps` re-runs apt (needs the package lists this layer restores) to
+# pull Chromium's system libraries (libnss3, libgbm, libxkbcommon, …).
+RUN apt-get update \
+    && HOME=/app npm_config_cache=/app/.npm \
+       npx -y @playwright/mcp@latest --version \
+    && HOME=/app npm_config_cache=/app/.npm \
+       npx -y playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
