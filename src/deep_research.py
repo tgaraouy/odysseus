@@ -28,10 +28,11 @@ def current_date_context() -> str:
     System TZ-local so it matches what the user sees. Portable strftime only."""
     now = datetime.now().astimezone()
     return (
-        f"Today's date is {now.strftime('%B %d, %Y')} ({now.strftime('%Y-%m-%d')}). "
-        f"When a search query needs a year or refers to 'latest'/'current'/"
-        f"'this year', use {now.strftime('%Y')} or relative wording — never a "
-        f"year inferred from training data.\n\n"
+        f"Today is {now.strftime('%A')}, {now.strftime('%B %d, %Y')} "
+        f"({now.strftime('%Y-%m-%d')}). When a search query needs a year or refers "
+        f"to 'latest'/'current'/'this year', use {now.strftime('%Y')} or relative "
+        f"wording — never a year inferred from training data. When asked to choose "
+        f"behavior by day of week, use today's weekday name above ({now.strftime('%A')}).\n\n"
     )
 
 # ---------------------------------------------------------------------------
@@ -669,7 +670,7 @@ class DeepResearcher:
             logger.info(f"Synthesis using last {self.synthesis_window} of {len(findings)} findings")
         findings_text = self._format_findings(window)
 
-        prompt = SYNTHESIZE_PROMPT.format(
+        prompt = current_date_context() + SYNTHESIZE_PROMPT.format(
             question=question,
             report=current_report or "(First round — no report yet.)",
             new_findings=findings_text,
@@ -728,7 +729,7 @@ class DeepResearcher:
     # ------------------------------------------------------------------
     async def _final_report(self, question: str, report: str) -> str:
         """LLM writes a polished final report, retrying if too short."""
-        prompt = FINAL_REPORT_PROMPT.format(
+        prompt = current_date_context() + FINAL_REPORT_PROMPT.format(
             question=question,
             report=report,
         )
