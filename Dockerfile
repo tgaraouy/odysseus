@@ -54,6 +54,14 @@ COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
 
+# Local speech-to-text (STT) via faster-whisper (CTranslate2 + PyAV, CPU/int8).
+# Enables Settings stt_provider=local for higher-accuracy offline dictation than
+# the browser Web Speech API (better for medical terms — drug names, dosages).
+# torch is intentionally omitted: services/stt/stt_service.py treats it as an
+# optional CUDA probe and falls back to CPU when absent. Model weights download
+# on first use into the mounted HF cache (./data/huggingface), so they persist.
+RUN pip install --no-cache-dir faster-whisper
+
 # Copy app code
 COPY . .
 
