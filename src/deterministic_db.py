@@ -25,9 +25,13 @@ _ROOT = Path(__file__).resolve().parent.parent
 _CHARTER_DIR = _ROOT / "charters"
 _LEDGER_DIR = Path(os.getenv("LEDGER_DIR", _ROOT / "data" / "ledger"))
 
-# Domain registry: session-name match → (domain, charter file). Extend per domain.
+# Domain registry. A session belongs to a domain if its FOLDER equals the domain's
+# folder (the clean, intentional, future-proof signal — folder = domain), OR its name
+# contains one of the name needles (convenience fallback). Extend per domain.
 _DOMAINS = [
-    ("health", "🩺 health log", "health.charter.yaml"),
+    {"domain": "health", "folder": "health",
+     "names": ["health log", "histamine", "health", "diet check"],
+     "charter": "health.charter.yaml"},
 ]
 
 
@@ -46,21 +50,23 @@ def _ensure_genesis(domain: str, charter_file: str) -> dict:
     return L.get_charter(db)
 
 
-def _match_domain(session_name: str) -> tuple | None:
+def _match_domain(session_name: str, folder: str = "") -> tuple | None:
+    f = (folder or "").lower().strip()
     name = (session_name or "").lower()
-    for domain, needle, charter_file in _DOMAINS:
-        if needle in name:
-            return domain, charter_file
+    for d in _DOMAINS:
+        if (f and f == d["folder"]) or any(nd in name for nd in d["names"]):
+            return d["domain"], d["charter"]
     return None
 
 
-def capture_message(session_name: str, text: str, actor: str = "user") -> dict | None:
+def capture_message(session_name: str, text: str, actor: str = "user",
+                    folder: str = "") -> dict | None:
     """Deterministically capture a message onto the domain ledger if the session belongs
-    to a registered domain. Returns the capture result, or None if not a domain session.
-    Never raises into the chat path — callers should still guard, but this is defensive."""
+    to a registered domain (by folder = domain, or a name fallback). Returns the capture
+    result, or None if not a domain session. Never raises into the chat path."""
     if not (text and text.strip()):
         return None
-    match = _match_domain(session_name)
+    match = _match_domain(session_name, folder)
     if not match:
         return None
     domain, charter_file = match

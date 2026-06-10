@@ -459,7 +459,8 @@ def setup_chat_routes(
             # Guarded so a ledger issue can never break the chat path.
             try:
                 from src.deterministic_db import capture_message
-                capture_message(getattr(sess, "name", ""), message, actor=owner or "user")
+                capture_message(getattr(sess, "name", ""), message,
+                                actor=owner or "user", folder=getattr(sess, "folder", "") or "")
             except Exception as _ldg_e:
                 logger.debug(f"ledger capture skipped: {_ldg_e}")
             if _clear_orphaned_session_endpoint(sess, owner=owner):
