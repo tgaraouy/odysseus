@@ -73,7 +73,8 @@ def capture_message(session_name: str, text: str, actor: str = "user",
     try:
         charter = _ensure_genesis(domain, charter_file)
         db = _ledger_db(domain)
-        res = L.capture_raw(db, text.strip(), charter, actor=actor)
+        # the user stated it, unverified -> CLAIMED (AEP self_confidence)
+        res = L.capture_raw(db, text.strip(), charter, actor=actor, confidence="CLAIMED")
         if res.get("committed"):
             b = res["block"]
             logger.info(f"[ledger:{domain}] captured raw_entry seq={b['seq']} hash={b['hash'][:10]}")

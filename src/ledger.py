@@ -32,6 +32,15 @@ import yaml
 GENESIS_PREV = "0" * 64
 HERE = Path(__file__).resolve().parent
 
+# AEP confidence taxonomy — each block's self_confidence (best evidence -> hearsay).
+CONFIDENCE_LABELS = ("MEASURED", "OBSERVED", "INFERRED", "CLAIMED")
+
+
+def resolve_confidence(charter: dict, block_type: str, explicit: Optional[str]) -> Optional[str]:
+    """Pick a block's self_confidence: explicit override, else charter default per type."""
+    c = (explicit or charter.get("confidence_defaults", {}).get(block_type) or "").upper().strip()
+    return c if c in CONFIDENCE_LABELS else None
+
 
 # ── hashing ────────────────────────────────────────────────────────────────────
 def _canon(payload: dict) -> str:
@@ -39,8 +48,13 @@ def _canon(payload: dict) -> str:
 
 
 def block_hash(prev_hash: str, ts: str, actor: str, block_type: str,
-               payload: dict, domain: str) -> str:
-    material = "|".join([prev_hash, ts, actor, block_type, _canon(payload), domain])
+               payload: dict, domain: str, confidence: Optional[str] = None) -> str:
+    parts = [prev_hash, ts, actor, block_type, _canon(payload), domain]
+    # Backward-compatible: only blocks that carry a confidence label fold it into the
+    # hash, so the pre-confidence chain still re-verifies byte-for-byte.
+    if confidence:
+        parts.append(confidence)
+    material = "|".join(parts)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -58,8 +72,13 @@ def _connect(db_path: str) -> sqlite3.Connection:
         " timestamp TEXT NOT NULL,"
         " payload TEXT NOT NULL,"      # canonical JSON
         " ref TEXT,"                    # errata / warning target block_id
+        " confidence TEXT,"             # AEP self_confidence (MEASURED|OBSERVED|INFERRED|CLAIMED)
         " prev_hash TEXT NOT NULL,"
         " hash TEXT NOT NULL)")
+    # migrate older ledgers that predate the confidence column
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(ledger)").fetchall()]
+    if "confidence" not in cols:
+        conn.execute("ALTER TABLE ledger ADD COLUMN confidence TEXT")
     conn.commit()
     return conn
 
@@ -81,8 +100,8 @@ def load_charter(path: str | Path) -> dict:
 
 
 def get_charter(db_path: str) -> Optional[dict]:
-    """The governing charter is the one COMMITTED in the genesis block — not the file
-    (which could drift). Validation should use this, so the constitution is immutable."""
+    """The governing charter is the one COMMITTED in the genesis block (immutable),
+    not the file (which could drift). Validation should use this."""
     conn = _connect(db_path)
     try:
         row = conn.execute(
@@ -100,12 +119,13 @@ def init_ledger(db_path: str, charter: dict) -> dict:
         if _head(conn) is None:
             ts = datetime.now().isoformat(timespec="seconds")
             payload = {"charter": charter}
-            h = block_hash(GENESIS_PREV, ts, "system", "genesis", payload, charter["domain"])
+            conf = resolve_confidence(charter, "genesis", None)
+            h = block_hash(GENESIS_PREV, ts, "system", "genesis", payload, charter["domain"], conf)
             bid = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO ledger (block_id, domain, block_type, actor, timestamp, payload, ref, prev_hash, hash)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
-                (bid, charter["domain"], "genesis", "system", ts, _canon(payload), None, GENESIS_PREV, h))
+                "INSERT INTO ledger (block_id, domain, block_type, actor, timestamp, payload, ref, confidence, prev_hash, hash)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (bid, charter["domain"], "genesis", "system", ts, _canon(payload), None, conf, GENESIS_PREV, h))
             conn.commit()
         return {"domain": charter["domain"], "height": _head(conn)[0]}
     finally:
@@ -114,9 +134,12 @@ def init_ledger(db_path: str, charter: dict) -> dict:
 
 # ── the validator + commit ───────────────────────────────────────────────────────
 def propose(db_path: str, actor: str, block_type: str, payload: dict,
-            charter: dict, ref: Optional[str] = None) -> dict:
+            charter: dict, ref: Optional[str] = None,
+            confidence: Optional[str] = None) -> dict:
     """Validate a proposed block against the charter; commit or reject.
 
+    `confidence` is the block's AEP self_confidence; if omitted it defaults per the
+    charter's confidence_defaults for this block type.
     Returns {committed: True, block, warnings:[...]} or {committed: False, rejected:[...]}.
     """
     conn = _connect(db_path)
@@ -125,6 +148,9 @@ def propose(db_path: str, actor: str, block_type: str, payload: dict,
         # H4 provenance
         if not actor or not block_type:
             reasons.append("H4_provenance: missing actor or block_type")
+        # confidence must be a valid AEP label when explicitly given
+        if confidence and confidence.upper().strip() not in CONFIDENCE_LABELS:
+            reasons.append(f"confidence: '{confidence}' not in {CONFIDENCE_LABELS}")
         # H5 schema
         bt = charter.get("block_types", {}).get(block_type)
         if bt is None:
@@ -147,33 +173,36 @@ def propose(db_path: str, actor: str, block_type: str, payload: dict,
         if reasons:
             return {"committed": False, "rejected": reasons}
 
-        block = _commit(conn, actor, block_type, payload, charter, ref)
+        conf = resolve_confidence(charter, block_type, confidence)
+        block = _commit(conn, actor, block_type, payload, charter, ref, conf)
         warnings = _run_soft_rules(conn, block, charter)
         return {"committed": True, "block": block, "warnings": warnings}
     finally:
         conn.close()
 
 
-def _commit(conn, actor, block_type, payload, charter, ref=None) -> dict:
+def _commit(conn, actor, block_type, payload, charter, ref=None, confidence=None) -> dict:
     prev = _head(conn)
     prev_hash = prev[1] if prev else GENESIS_PREV
     ts = datetime.now().isoformat(timespec="seconds")
-    h = block_hash(prev_hash, ts, actor, block_type, payload, charter["domain"])
+    h = block_hash(prev_hash, ts, actor, block_type, payload, charter["domain"], confidence)
     bid = str(uuid.uuid4())
     conn.execute(
-        "INSERT INTO ledger (block_id, domain, block_type, actor, timestamp, payload, ref, prev_hash, hash)"
-        " VALUES (?,?,?,?,?,?,?,?,?)",
-        (bid, charter["domain"], block_type, actor, ts, _canon(payload), ref, prev_hash, h))
+        "INSERT INTO ledger (block_id, domain, block_type, actor, timestamp, payload, ref, confidence, prev_hash, hash)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (bid, charter["domain"], block_type, actor, ts, _canon(payload), ref, confidence, prev_hash, h))
     conn.commit()
     seq = _head(conn)[0]
     return {"seq": seq, "block_id": bid, "block_type": block_type, "actor": actor,
-            "timestamp": ts, "payload": payload, "ref": ref, "prev_hash": prev_hash, "hash": h}
+            "timestamp": ts, "payload": payload, "ref": ref, "confidence": confidence,
+            "prev_hash": prev_hash, "hash": h}
 
 
-def capture_raw(db_path: str, text: str, charter: dict, actor: str = "user") -> dict:
+def capture_raw(db_path: str, text: str, charter: dict, actor: str = "user",
+                confidence: Optional[str] = None) -> dict:
     """Deterministic capture: commit the verbatim input as a raw_entry BEFORE any agent.
-    This is the determinism guarantee — input is never lost to agent tool-roulette."""
-    return propose(db_path, actor, "raw_entry", {"text": text}, charter)
+    Defaults to CLAIMED self_confidence (the user stated it; unverified)."""
+    return propose(db_path, actor, "raw_entry", {"text": text}, charter, confidence=confidence)
 
 
 # ── soft rules (commit, then flag / auto-warn) ─────────────────────────────────────
@@ -192,7 +221,8 @@ def _run_soft_rules(conn, block, charter) -> list:
                 w = _commit(conn, "system", "warning",
                             {"rule": "S2_interaction_watch", "message": msg, "trigger": hit,
                              "concern": concern},
-                            charter, ref=block["block_id"])
+                            charter, ref=block["block_id"],
+                            confidence=resolve_confidence(charter, "warning", None))
                 warnings.append(w["payload"])
     # S3 completeness — flag (not block) missing dose/timing/severity.
     flags = []
@@ -213,14 +243,14 @@ def verify_chain(db_path: str) -> dict:
     conn = _connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT seq, domain, block_type, actor, timestamp, payload, prev_hash, hash"
+            "SELECT seq, domain, block_type, actor, timestamp, payload, confidence, prev_hash, hash"
             " FROM ledger ORDER BY seq ASC").fetchall()
         prev = GENESIS_PREV
-        for (seq, domain, bt, actor, ts, payload_json, prev_hash, h) in rows:
+        for (seq, domain, bt, actor, ts, payload_json, confidence, prev_hash, h) in rows:
             payload = json.loads(payload_json)
             if prev_hash != prev:
                 return {"ok": False, "bad_seq": seq, "reason": "broken prev_hash link"}
-            recomputed = block_hash(prev_hash, ts, actor, bt, payload, domain)
+            recomputed = block_hash(prev_hash, ts, actor, bt, payload, domain, confidence)
             if recomputed != h:
                 return {"ok": False, "bad_seq": seq, "reason": "hash mismatch (tampered)"}
             prev = h
@@ -233,10 +263,10 @@ def chain(db_path: str, limit: int = 50) -> list:
     conn = _connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT seq, block_type, actor, timestamp, payload, ref, substr(hash,1,10)"
+            "SELECT seq, block_type, actor, timestamp, payload, ref, confidence, substr(hash,1,10)"
             " FROM ledger ORDER BY seq ASC LIMIT ?", (limit,)).fetchall()
         return [{"seq": s, "type": bt, "actor": a, "ts": ts,
-                 "payload": json.loads(p), "ref": r, "hash10": h}
-                for (s, bt, a, ts, p, r, h) in rows]
+                 "payload": json.loads(p), "ref": r, "confidence": conf, "hash10": h}
+                for (s, bt, a, ts, p, r, conf, h) in rows]
     finally:
         conn.close()

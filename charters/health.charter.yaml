@@ -1,8 +1,27 @@
 # Health Domain Charter — the genesis constitution for the health deterministic-DB ledger.
 # Per-domain charter (agents opt in). HARD invariants reject; SOFT rules flag/auto-warn.
 domain: health
-version: "0.1"
+version: "0.2"
 owner: tgaraouy
+
+# AEP confidence taxonomy — each block declares the epistemic level it earns
+# (self_confidence), mirroring the Audit Evidence Protocol's legally-grounded labels.
+# Order: best evidence -> hearsay.
+confidence_labels: [MEASURED, OBSERVED, INFERRED, CLAIMED]
+# Default self_confidence assigned at commit time, by block type. Callers may override
+# (e.g. a clinician-confirmed value -> MEASURED). Validated against confidence_labels.
+confidence_defaults:
+  genesis:       MEASURED    # the constitution itself
+  raw_entry:     CLAIMED     # the user stated it; unverified
+  event:         INFERRED    # extracted by the LLM — judgment
+  adherence:     INFERRED
+  fact:          INFERRED
+  intervention:  CLAIMED
+  lab_result:    OBSERVED    # credible secondhand (e.g. a MyChart export)
+  warning:       INFERRED    # rule-derived inference
+  approval:      MEASURED    # an explicit, verified user action
+  external_send: MEASURED
+  errata:        CLAIMED
 description: >
   Permissioned, single-writer, append-only hash-chained ledger for the health domain.
   Raw input is captured verbatim and deterministically before any agent runs; agents
