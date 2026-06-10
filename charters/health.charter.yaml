@@ -22,6 +22,12 @@ confidence_defaults:
   approval:      MEASURED    # an explicit, verified user action
   external_send: MEASURED
   errata:        CLAIMED
+# What each label MEANS in this domain (best evidence -> hearsay). Surfaced in the UI.
+confidence_definitions:
+  MEASURED: Directly verified — clinician-confirmed, or validated at the source. The strongest grounding; act on it with confidence.
+  OBSERVED: Credible secondhand — ingested from an authoritative record (e.g. a MyChart lab export). Documented, but not yet clinician-interpreted in your context.
+  INFERRED: Expert judgment — structure the local model derived from your raw entry (events, adherence, facts). Plausible, but not verified.
+  CLAIMED:  Unverified self-report — a raw entry you logged. Faithful to what you said; not independently checked.
 description: >
   Permissioned, single-writer, append-only hash-chained ledger for the health domain.
   Raw input is captured verbatim and deterministically before any agent runs; agents
