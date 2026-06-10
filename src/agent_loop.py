@@ -1587,10 +1587,14 @@ async def stream_agent_loop(
     ))
     # Models known to reject tool schemas at the Ollama/local level even when
     # the endpoint URL would otherwise enable native function calling.
-    # The per-endpoint supports_tools flag (True/False) always takes priority
-    # and can override this list for users who know their setup.
+    # These OVERRIDE the per-endpoint supports_tools flag: a vision-only model
+    # hard-400s on tool schemas ("does not support tools"), and the supports_tools
+    # toggle is endpoint-wide, so a user who flips it on for a tool model (e.g.
+    # qwen3) must not have it force tools onto the vision model on the same endpoint.
     _model_no_tools = any(kw in _model_lc for kw in (
         "deepseek-r1",
+        # vision-only Ollama models that reject tool schemas
+        "minicpm-v", "llama3.2-vision", "llava", "bakllava", "moondream",
     ))
     # Native Ollama endpoints (/api/chat) handle tool schemas differently from
     # the OpenAI-compat path. Models like gemma4, qwen3.5, ministral respond to
@@ -1602,11 +1606,13 @@ async def stream_agent_loop(
     # the fenced-block path is used instead of native function calling.
     _is_ollama_native = _is_ollama_native_url(endpoint_url or "")
     _ollama_openai_compat = _is_ollama_openai_compat_url(endpoint_url or "")
-    if _endpoint_supports is True:
+    if _model_no_tools:
+        # Hard tool-incompatible model — wins over the endpoint-wide supports_tools flag.
+        _is_api_model = False
+    elif _endpoint_supports is True:
         _is_api_model = True
     elif (
         _endpoint_supports is False
-        or _model_no_tools
         or _is_ollama_native
         or _ollama_openai_compat
     ):
