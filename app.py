@@ -568,7 +568,10 @@ async def health_ledger_view(request: Request):
         return HTMLResponse(
             "<p style='font-family:monospace;padding:2rem'>Health ledger view not "
             "generated yet — it refreshes on the next projection cycle.</p>", status_code=404)
-    return HTMLResponse(f.read_text(encoding="utf-8"))
+    # template the per-request CSP nonce so the view's inline filter script is allowed
+    html = f.read_text(encoding="utf-8").replace(
+        "__CSP_NONCE__", getattr(request.state, "csp_nonce", ""))
+    return HTMLResponse(html)
 
 # History
 from routes.history_routes import setup_history_routes
