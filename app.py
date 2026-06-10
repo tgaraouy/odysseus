@@ -553,6 +553,23 @@ app.include_router(setup_chat_routes(
 from routes.research_routes import setup_research_routes
 app.include_router(setup_research_routes(research_handler, session_manager=session_manager))
 
+# Confidence-graded Health Ledger viewer — generated into the data volume by the
+# projection cycle; served here behind auth (PHI). Reachable on the tailnet/iPhone.
+@app.get("/ledger", response_class=HTMLResponse)
+async def health_ledger_view(request: Request):
+    from routes.email_helpers import _require_auth
+    try:
+        _require_auth(request)
+    except HTTPException:
+        return RedirectResponse("/login")
+    from pathlib import Path as _P
+    f = _P("/app/data/health-ledger.html")
+    if not f.exists():
+        return HTMLResponse(
+            "<p style='font-family:monospace;padding:2rem'>Health ledger view not "
+            "generated yet — it refreshes on the next projection cycle.</p>", status_code=404)
+    return HTMLResponse(f.read_text(encoding="utf-8"))
+
 # History
 from routes.history_routes import setup_history_routes
 app.include_router(setup_history_routes(session_manager))

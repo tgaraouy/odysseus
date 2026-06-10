@@ -270,3 +270,18 @@ def chain(db_path: str, limit: int = 50) -> list:
                 for (s, bt, a, ts, p, r, conf, h) in rows]
     finally:
         conn.close()
+
+
+def retracted_seqs(db_path: str) -> set:
+    """Seqs superseded by an `errata` (append-only retraction): the directly-retracted
+    block plus any block derived from it (ref -> a retracted block_id). Nothing is
+    deleted — projections/views simply skip or strike these."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute("SELECT seq, block_id, block_type, ref FROM ledger").fetchall()
+        targets = {ref for (_s, _b, bt, ref) in rows if bt == "errata" and ref}
+        # the errata block is the correction itself — never mark it retracted
+        return {s for (s, bid, bt, ref) in rows
+                if bt != "errata" and (bid in targets or (ref and ref in targets))}
+    finally:
+        conn.close()
