@@ -171,6 +171,7 @@ if AUTH_ENABLED:
         "/api/health",
         "/api/version",
         "/login",
+        "/whoop/callback",  # OAuth redirect — shows only the code (useless without the secret)
     }
     AUTH_EXEMPT_PREFIXES = ["/static"]
     # Dynamic paths whose own handler proves identity via a path-embedded
