@@ -591,6 +591,23 @@ async def health_hub_view(request: Request):
             "it refreshes on the next projection cycle.</p>", status_code=404)
     return HTMLResponse(f.read_text(encoding="utf-8"))
 
+
+# WHOOP OAuth redirect target — shows the authorization code to paste back to the agent.
+@app.get("/whoop/callback", response_class=HTMLResponse)
+async def whoop_callback(request: Request):
+    import html as _h
+    code = request.query_params.get("code", "")
+    err = request.query_params.get("error", "")
+    body = (f"<h2 style='color:#9E2B25'>WHOOP error</h2><p>{_h.escape(err)}</p>" if err else
+            f"<h2 style='color:#9E2B25'>WHOOP authorized ✓</h2>"
+            f"<p>Tell the agent: <b>connect WHOOP with this code</b> —</p>"
+            f"<p style='background:#EDE7D6;border:1px solid #E3DBC3;border-radius:4px;padding:12px;word-break:break-all'>"
+            f"<b>{_h.escape(code)}</b></p>"
+            f"<p style='color:#6B655B;font-size:13px'>The code expires in seconds — connect now.</p>")
+    return HTMLResponse(
+        "<body style='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#F4F0E6;"
+        f"color:#141311;padding:3rem;max-width:640px;margin:auto'>{body}</body>")
+
 # History
 from routes.history_routes import setup_history_routes
 app.include_router(setup_history_routes(session_manager))
