@@ -573,6 +573,24 @@ async def health_ledger_view(request: Request):
         "__CSP_NONCE__", getattr(request.state, "csp_nonce", ""))
     return HTMLResponse(html)
 
+
+# Health topic hub — editable protocol + latest labs + link to the record. Generated
+# into the data volume by the projection cycle; served behind auth (PHI).
+@app.get("/health", response_class=HTMLResponse)
+async def health_hub_view(request: Request):
+    from routes.email_helpers import _require_auth
+    try:
+        _require_auth(request)
+    except HTTPException:
+        return RedirectResponse("/login")
+    from pathlib import Path as _P
+    f = _P("/app/data/health-hub.html")
+    if not f.exists():
+        return HTMLResponse(
+            "<p style='font-family:monospace;padding:2rem'>Health hub not generated yet — "
+            "it refreshes on the next projection cycle.</p>", status_code=404)
+    return HTMLResponse(f.read_text(encoding="utf-8"))
+
 # History
 from routes.history_routes import setup_history_routes
 app.include_router(setup_history_routes(session_manager))
