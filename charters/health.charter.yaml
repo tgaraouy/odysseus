@@ -1,0 +1,48 @@
+# Health Domain Charter — the genesis constitution for the health deterministic-DB ledger.
+# Per-domain charter (agents opt in). HARD invariants reject; SOFT rules flag/auto-warn.
+domain: health
+version: "0.1"
+owner: tgaraouy
+description: >
+  Permissioned, single-writer, append-only hash-chained ledger for the health domain.
+  Raw input is captured verbatim and deterministically before any agent runs; agents
+  propose further blocks which a validator commits or rejects against this charter.
+
+# The only block types that may ever be appended, with their required payload fields (H5).
+block_types:
+  genesis:      { required: [charter] }
+  raw_entry:    { required: [text] }                                  # verbatim user input
+  lab_result:   { required: [marker, value, unit, drawn_at] }
+  intervention: { required: [compound, action] }                     # action: start|change|stop
+  adherence:    { required: [compound, taken] }                      # taken: true|false (+ at, dose)
+  event:        { required: [event_date, event_type, description] }  # + severity
+  fact:         { required: [key, value] }
+  agent_note:   { required: [text] }
+  warning:      { required: [rule, message] }                        # auto-fired by soft rules
+  approval:     { required: [scope] }                                # consent gate (H6)
+  external_send: { required: [scope, target] }                       # egress — gated by H6
+  errata:       { required: [ref, reason] }                          # correction-by-reference
+
+# Block types that move data off-device — require a prior approval (H6).
+egress_block_types: [external_send]
+
+# 🔴 HARD — deterministically checked, REJECT on violation. Keep this set small.
+hard_invariants:
+  H1_chain_integrity: Valid prev_hash linking to the current head and a valid own hash.
+  H2_append_only:     No edits/deletes; corrections only via an `errata` block referencing a real block_id.
+  H3_raw_complete:    A `raw_entry` must preserve non-empty verbatim input.
+  H4_provenance:      Every block carries actor, timestamp, and block_type.
+  H5_schema_valid:    Payload satisfies the block_type's required fields.
+  H6_sovereignty:     An egress block requires a prior `approval` block.
+
+# 🟡 SOFT — commit, then flag / advise / auto-warn. Judgment-heavy, never blocking.
+soft_rules:
+  S2_interaction_watch:
+    description: Auto-warn when an entry contains a known trigger relevant to active concerns.
+    # First-slice deterministic watchlist (grounded in the user's gout + histamine/ESR focus).
+    triggers:
+      histamine: [wine, alcohol, beer, aged cheese, fermented, cured, smoked, leftovers,
+                  tomato, spinach, eggplant, avocado, kombucha, sauerkraut]
+      gout_urate: [alcohol, beer, wine, organ meat, shellfish, sardines, anchovies, high-purine]
+  S3_completeness:
+    description: Flag missing dose/timing/severity (don't block).

@@ -453,6 +453,15 @@ def setup_chat_routes(
             _verify_session_owner(request, session)
             sess = session_manager.get_session(session)
             owner = get_current_user(request)
+            # Deterministic-DB capture: if this is a domain ledger session (e.g.
+            # "🩺 Health Log"), commit the verbatim message onto the hash-chained
+            # ledger BEFORE the agent runs — so input is never lost to tool-roulette.
+            # Guarded so a ledger issue can never break the chat path.
+            try:
+                from src.deterministic_db import capture_message
+                capture_message(getattr(sess, "name", ""), message, actor=owner or "user")
+            except Exception as _ldg_e:
+                logger.debug(f"ledger capture skipped: {_ldg_e}")
             if _clear_orphaned_session_endpoint(sess, owner=owner):
                 raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
             # Issue #587: picker shows a model from the endpoint cache but
