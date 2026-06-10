@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Odysseus">
+  <!-- single-colour mark (uses currentColor so the app can tint it to the accent) -->
+  <circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <circle cx="16" cy="16" r="11.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="2.3 2.05"/>
+  <path d="M16 5.5 L18.8 13.2 L26.5 16 L18.8 18.8 L16 26.5 L13.2 18.8 L5.5 16 L13.2 13.2 Z" fill="currentColor"/>
+  <circle cx="16" cy="16" r="2" fill="#F4F0E6"/>
+</svg>
