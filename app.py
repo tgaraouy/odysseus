@@ -590,7 +590,41 @@ async def health_hub_view(request: Request):
         return HTMLResponse(
             "<p style='font-family:monospace;padding:2rem'>Health hub not generated yet — "
             "it refreshes on the next projection cycle.</p>", status_code=404)
-    return HTMLResponse(f.read_text(encoding="utf-8"))
+    html = f.read_text(encoding="utf-8").replace(
+        "__CSP_NONCE__", getattr(request.state, "csp_nonce", ""))
+    return HTMLResponse(html)
+
+
+@app.post("/api/health/journal")
+async def health_journal_post(request: Request):
+    """Self-service journal save from the /health panel -> bridge health_log_journal."""
+    from routes.email_helpers import _require_auth
+    _require_auth(request)  # 401 if not authenticated
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    fields = {}
+    for k in ("mood", "stress", "energy", "sleep_quality"):
+        try:
+            v = int(body.get(k) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v:
+            fields[k] = v
+    for k in ("gratitude", "intention", "notes"):
+        v = (body.get(k) or "").strip()
+        if v:
+            fields[k] = v
+    if not fields:
+        return JSONResponse({"ok": False, "error": "nothing to log"}, status_code=400)
+    qn = next((t["qualified_name"] for t in mcp_manager.get_all_tools()
+               if t["name"] == "health_log_journal"), None)
+    if not qn:
+        return JSONResponse({"ok": False, "error": "journal tool unavailable"}, status_code=503)
+    res = await mcp_manager.call_tool(qn, fields)
+    ok = not (isinstance(res, dict) and res.get("error"))
+    return JSONResponse({"ok": ok, "logged": fields, "result": res})
 
 
 # WHOOP OAuth redirect target — shows the authorization code to paste back to the agent.
