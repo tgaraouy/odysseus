@@ -321,16 +321,51 @@ class McpManager:
         return False
 
     async def _connect_http(self, server_id: str, name: str, url: str) -> bool:
-        """Connect to a Streamable HTTP MCP server (with automatic OAuth)."""
+        """Connect to a Streamable HTTP MCP server. Tries UNAUTHENTICATED first (most
+        servers, incl. our local bridge, need no auth — and the SDK's OAuth provider
+        eagerly does DCR which aborts on a no-auth server). Falls back to the OAuth
+        provider only if the plain connect fails (server genuinely requires auth)."""
         try:
             from mcp import ClientSession
             from mcp.client.streamable_http import streamablehttp_client
             from contextlib import AsyncExitStack
             from src.mcp_oauth import build_provider, clear_auth_url
 
+            async def _establish(stack, transport):
+                read_stream, write_stream, _get_session_id = transport
+                session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
+                await session.initialize()
+                tools = [{
+                    "name": t.name,
+                    "description": t.description or "",
+                    "input_schema": t.inputSchema if hasattr(t, "inputSchema") else {},
+                } for t in (await session.list_tools()).tools]
+                self._sessions[server_id] = session
+                self._stacks[server_id] = stack
+                self._tools[server_id] = tools
+                self._connections[server_id] = {
+                    "status": "connected", "name": name, "transport": "http",
+                    "tool_count": len(tools),
+                }
+                self._generation += 1
+                logger.info(f"MCP server connected: {name} ({server_id}) - {len(tools)} tools via http")
+                return True
+
+            # 1) Plain connect — no auth provider.
+            stack = AsyncExitStack()
+            try:
+                transport = await stack.enter_async_context(streamablehttp_client(url))
+                return await _establish(stack, transport)
+            except Exception as plain_err:
+                try:
+                    await stack.aclose()
+                except Exception:
+                    pass
+                logger.info(f"MCP {server_id}: unauthenticated connect failed "
+                            f"({type(plain_err).__name__}); trying OAuth")
+
+            # 2) Fall back to the OAuth provider (servers that truly require it).
             def _on_redirect(auth_url):
-                # Publish needs_auth the moment the URL is known, independent of
-                # how long discovery/DCR took (may exceed the bounded start wait).
                 self._connections[server_id] = {
                     "status": "needs_auth", "name": name, "transport": "http",
                     "auth_url": auth_url,
@@ -339,33 +374,9 @@ class McpManager:
             provider = build_provider(server_id, url, on_redirect=_on_redirect)
             stack = AsyncExitStack()
             transport = await stack.enter_async_context(streamablehttp_client(url, auth=provider))
-            read_stream, write_stream, _get_session_id = transport
-            session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
-            await session.initialize()
-
-            tools_result = await session.list_tools()
-            tools = []
-            for tool in tools_result.tools:
-                tools.append({
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
-                })
-
-            self._sessions[server_id] = session
-            self._stacks[server_id] = stack
-            self._tools[server_id] = tools
-            self._connections[server_id] = {
-                "status": "connected", "name": name, "transport": "http",
-                "tool_count": len(tools),
-            }
+            ok = await _establish(stack, transport)
             clear_auth_url(server_id)
-            # Tools changed (this can complete after connect_server already
-            # returned, via the background OAuth flow), so bump the generation
-            # to invalidate the tool-prompt cache.
-            self._generation += 1
-            logger.info(f"MCP server connected: {name} ({server_id}) - {len(tools)} tools via http")
-            return True
+            return ok
         except ImportError:
             logger.warning("MCP package not installed. Install with: pip install mcp")
             self._connections[server_id] = {"status": "error", "error": "mcp package not installed", "name": name}
