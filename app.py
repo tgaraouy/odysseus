@@ -616,6 +616,16 @@ async def health_journal_post(request: Request):
         v = (body.get(k) or "").strip()
         if v:
             fields[k] = v
+    try:
+        w = float(body.get("weight") or 0)
+    except (TypeError, ValueError):
+        w = 0.0
+    if w > 0:
+        fields["weight"] = w
+    for k in ("meditation", "journaling", "apollo"):
+        v = body.get(k)
+        if v is not None:
+            fields[k] = 1 if v else 0
     if not fields:
         return JSONResponse({"ok": False, "error": "nothing to log"}, status_code=400)
     qn = next((t["qualified_name"] for t in mcp_manager.get_all_tools()
@@ -625,6 +635,39 @@ async def health_journal_post(request: Request):
     res = await mcp_manager.call_tool(qn, fields)
     ok = not (isinstance(res, dict) and res.get("error"))
     return JSONResponse({"ok": ok, "logged": fields, "result": res})
+
+
+@app.post("/api/health/analyze")
+async def health_analyze_post(request: Request):
+    """One-tap 'Analyze my day': pull today's data via the bridge, return a short
+    WHOOP-aware coach review tying the objective data to the journal."""
+    from routes.email_helpers import _require_auth
+    _require_auth(request)
+    import json as _json
+    qn = next((t["qualified_name"] for t in mcp_manager.get_all_tools()
+               if t["name"] == "health_get_today"), None)
+    if not qn:
+        return JSONResponse({"ok": False, "error": "health tool unavailable"}, status_code=503)
+    res = await mcp_manager.call_tool(qn, {})
+    today_txt = _json.dumps(res) if isinstance(res, dict) else str(res)
+    messages = [
+        {"role": "system", "content": (
+            "You are a concise, warm health coach. Given today's WHOOP wearable data and the "
+            "user's self-reported journal, write a 2-3 sentence review that ties the objective "
+            "data (recovery, strain, sleep, HRV, resting HR) to the subjective journal (mood, "
+            "stress, energy). Be specific and grounded in the actual numbers shown. End with ONE "
+            "gentle, practical suggestion. This is wellness guidance, NOT medical advice or "
+            "diagnosis. No preamble and no lists — just the short review.")},
+        {"role": "user", "content": f"Today's data (JSON):\n{today_txt}"},
+    ]
+    try:
+        from src.ai_interaction import _resolve_model
+        from src.llm_core import llm_call_async
+        url, model, headers = _resolve_model("")
+        text = await llm_call_async(url, model, messages, temperature=0.5, max_tokens=320, headers=headers)
+        return JSONResponse({"ok": True, "analysis": (text or "").strip()})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # WHOOP OAuth redirect target — shows the authorization code to paste back to the agent.
