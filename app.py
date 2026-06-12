@@ -1004,6 +1004,37 @@ async def _startup_event():
             _db.close()
     except Exception as e:
         logger.debug(f"Incognito purge skipped: {e}")
+    # Auto-archive chats idle for N days (by last_accessed) so the list stays clean.
+    # Skips the singleton Assistant / Tasks system sessions. Default 14 days.
+    try:
+        from datetime import datetime, timedelta
+        from core.database import SessionLocal as _SLa, Session as _DbSessA
+        _days = int(os.getenv("ODYSSEUS_ARCHIVE_IDLE_DAYS", "14"))
+        _cutoff = datetime.utcnow() - timedelta(days=_days)
+        _dba = _SLa()
+        try:
+            _idle = _dba.query(_DbSessA).filter(
+                _DbSessA.archived == False,  # noqa: E712
+                _DbSessA.last_accessed < _cutoff,
+            ).all()
+            _n = 0
+            for _s in _idle:
+                if (_s.folder or "") in ("Assistant", "Tasks"):
+                    continue
+                _s.archived = True
+                _n += 1
+                try:
+                    if _s.id in session_manager.sessions:
+                        session_manager.sessions[_s.id].archived = True
+                except Exception:
+                    pass
+            if _n:
+                _dba.commit()
+                logger.info(f"Auto-archived {_n} chat(s) idle > {_days}d")
+        finally:
+            _dba.close()
+    except Exception as e:
+        logger.debug(f"Idle-session auto-archive skipped: {e}")
     # Strong refs to fire-and-forget startup tasks. Without this, Python may
     # GC tasks created with `asyncio.create_task(...)` before they finish.
     _startup_tasks: list[asyncio.Task] = getattr(app.state, "_startup_tasks", [])

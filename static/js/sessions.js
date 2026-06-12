@@ -1385,6 +1385,10 @@ export async function loadSessions() {
       }
     }
     const hasPendingChat = !!_pendingChat;
+    // Open to a NEW chat on a fresh page load instead of auto-resuming the last
+    // one (it stays in the sidebar list). Opt out: Storage.set('startupMode','resume').
+    const _openFresh = !sessionStorage.getItem('ody-session-active')
+                       && Storage.get('startupMode') !== 'resume';
     let targetId = null;
     if (hasPendingChat) {
       // A model was picked and the UI is showing a fresh New Chat, but the
@@ -1399,13 +1403,13 @@ export async function loadSessions() {
     } else if (currentSessionId) {
       // Session was just created but may not be in the list yet — keep it
       targetId = currentSessionId;
-    } else if (savedId && activeSessions.some(s => s.id === savedId)) {
+    } else if (!_openFresh && savedId && activeSessions.some(s => s.id === savedId)) {
       targetId = savedId;
-    } else if (!_skipAutoSelect && _realSessions.length > 0) {
+    } else if (!_openFresh && !_skipAutoSelect && _realSessions.length > 0) {
       // Most-recent NON-transient session — skip Assistant / Tasks so the
       // auto-firing assistant doesn't become the apparent default chat.
       targetId = _realSessions[0].id;
-    } else if (!_skipAutoSelect && activeSessions.length > 0) {
+    } else if (!_openFresh && !_skipAutoSelect && activeSessions.length > 0) {
       // Only transient sessions exist (brand-new account) — fall through to
       // the original behaviour so we don't leave the user with nothing.
       targetId = activeSessions[0].id;
