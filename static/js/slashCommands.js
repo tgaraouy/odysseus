@@ -1112,7 +1112,7 @@ async function _cmdToggleIncognito(args, ctx) {
   const sessions = sessionModule.getSessions();
   const sess = ctx.sid ? sessions.find(s => s.id === ctx.sid) : null;
   if (sess && sess.message_count > 0) {
-    slashReply(`Can't toggle Nobody mode mid-conversation — start a new session first`);
+    slashReply(`Can't toggle Private mode mid-conversation — start a new session first`);
     return true;
   }
   const v = (args[0]||'').toLowerCase();
