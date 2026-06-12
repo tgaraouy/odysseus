@@ -626,6 +626,16 @@ async def health_journal_post(request: Request):
         v = body.get(k)
         if v is not None:
             fields[k] = 1 if v else 0
+    try:
+        ua = float(body.get("uric_acid") or 0)
+    except (TypeError, ValueError):
+        ua = 0.0
+    if ua > 0:
+        fields["uric_acid"] = ua
+    if body.get("flare") is not None:
+        fields["flare"] = 1 if body.get("flare") else 0
+    if "date" in body and body.get("date"):
+        fields["date"] = str(body["date"])[:10]
     if not fields:
         return JSONResponse({"ok": False, "error": "nothing to log"}, status_code=400)
     qn = next((t["qualified_name"] for t in mcp_manager.get_all_tools()
