@@ -115,6 +115,25 @@ The stack is defined in `docker-compose.yml`. Each service is a container:
 - `src/tool_security.py` — **who may call what**: the non-admin blocklist + plan-mode allowlist.
 - `src/prompt_security.py` — **the fencing helpers** (untrusted-content wrappers).
 
+### Agent loop — why it matters
+1. **Step 3 is the whole point.** The single thing separating an *agent* from a *chatbot* is
+   that the model sees the result of its own action and decides again. A chatbot maps
+   prompt→reply once; the loop adds observe→re-decide. Everything labelled "agentic" is built on
+   that one addition.
+2. **Why it's the topic now** *(inferred, not reported — past my knowledge cutoff).* The loop is
+   an old idea; what changed is that its prerequisites crossed usable thresholds together —
+   reliable tool-calling / structured output, multi-step instruction-following that holds across
+   turns, and long-enough context to accumulate observations. Rule applied: *a technique becomes
+   "the topic" when its prerequisites stop being the bottleneck.*
+3. **What it buys us.** It is the only reason Touf is more than a chatbot. It chains
+   retrieve→compute→write in one request — "log a baseline" *was* a loop (read ledger → pull
+   WHOOP → write journal → confirm) — runs n-of-1 analysis over your data, and lets you use the
+   confidence-graded record by talking to it instead of running scripts.
+4. **Its power and its risk are the same thing.** Every observation fed back at step 3 is a fresh
+   chance for injected text to hijack the next action, and errors compound across steps. The loop
+   is *why* F-1 (fencing tool output) and the sandbox exist — capability and attack surface are
+   inseparable, not a side note.
+
 ---
 
 ## 5. The health layer (Touf): the deterministic ledger

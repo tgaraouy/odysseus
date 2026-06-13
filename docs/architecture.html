@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Touf / Odysseus — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4F0E6; --paper-2:#EDE7D6; --paper-3:#E3DBC3;
+  --ink:#141311; --ink-2:#3B3732; --ink-3:#6B655B; --ink-4:#A39C8E;
+  --obsidian:#141311; --bone:#F4F0E6; --bone-2:#C9C2B1; --bone-3:#8A8373;
+  --seal:#9E2B25; --seal-tint:#F3DEDB;
+  --measured:#1F5D3A; --observed:#1A4E8A; --inferred:#8A5A00; --claimed:#6B655B;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 26px 80px}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:'JetBrains Mono',monospace}
+code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--paper-2);border:1px solid var(--paper-3);border-radius:3px;padding:1px 5px}
+
+header{border-bottom:1px solid var(--paper-3);padding:40px 0 26px;margin-bottom:8px}
+.brand{display:flex;align-items:center;gap:12px}
+h1{font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:clamp(30px,5vw,46px);letter-spacing:-.01em;margin:16px 0 8px}
+.lede{font-family:'Source Serif 4',serif;font-size:19px;color:var(--ink-2);max-width:64ch}
+
+h2{font-family:'Source Serif 4',serif;font-weight:600;font-size:clamp(22px,3vw,28px);margin:54px 0 6px;padding-top:18px;border-top:1px solid var(--paper-3)}
+h2 .n{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--seal);margin-right:12px;vertical-align:2px}
+h3{font-family:'Inter',sans-serif;font-weight:600;font-size:15px;margin:26px 0 8px}
+p{margin:10px 0;max-width:68ch}
+p.body{font-family:'Source Serif 4',serif;font-size:16.5px;color:var(--ink-2)}
+ol,ul{margin:10px 0 10px 4px;max-width:68ch}
+li{font-family:'Source Serif 4',serif;font-size:16px;color:var(--ink-2);margin:8px 0;list-style:none;padding-left:26px;position:relative}
+li b{color:var(--ink)}
+li::before{content:attr(data-n);position:absolute;left:0;top:0;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--seal);font-weight:700}
+
+figure{margin:22px 0;background:var(--paper-2);border:1px solid var(--paper-3);border-radius:5px;padding:22px 18px}
+figure svg{display:block;width:100%;height:auto}
+figcaption{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--ink-3);margin-top:12px;text-align:center}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.chip{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;font-weight:700;padding:5px 10px;border-radius:3px;color:#fff}
+.note{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-4)}
+.callout{border-left:3px solid var(--seal);background:var(--seal-tint);padding:12px 16px;margin:18px 0;border-radius:0 4px 4px 0}
+.callout p{font-family:'Source Serif 4',serif;color:var(--ink);margin:0}
+footer{margin-top:60px;border-top:1px solid var(--paper-3);padding-top:18px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-4);line-height:1.8}
+.draft{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal);border:1px solid #9E2B2540;border-radius:3px;padding:3px 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="#141311" stroke-width="1.25"/><circle cx="16" cy="16" r="12" fill="none" stroke="#141311" stroke-width="1.1" stroke-dasharray="2.4 2.15"/><path d="M16 5.2 L18.9 13.1 L26.8 16 L18.9 18.9 L16 26.8 L13.1 18.9 L5.2 16 L13.1 13.1 Z" fill="#141311"/><circle cx="16" cy="16" r="2" fill="#9E2B25"/></svg>
+    <span class="eyebrow">Touf · Odysseus — system architecture</span>
+    <span class="draft" style="margin-left:auto">draft · for review</span>
+  </div>
+  <h1>Architecture</h1>
+  <p class="lede">A self-hosted AI agent that <em>uses tools</em> to turn your labs, wearables, and
+  notes into a tamper-evident, confidence-graded health record. This page is the visual companion
+  to <code>docs/ARCHITECTURE.md</code> — same content, with the diagrams.</p>
+</header>
+
+<h2><span class="n">01</span>The agent loop</h2>
+<p class="body">An <b>agent</b> is a model placed in a control loop that can <em>act</em>, not just reply.
+A <b>tool</b> is a function it can call (<code>read_file</code>, <code>web_search</code>, your
+<code>health_log_journal</code>). The loop is the cycle below.</p>
+
+<figure>
+<svg viewBox="0 0 840 250" font-family="Inter, sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#141311"/></marker>
+    <marker id="ahs" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9E2B25"/></marker>
+  </defs>
+  <!-- boxes -->
+  <g>
+    <rect x="8"  y="34" width="180" height="70" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+    <text x="98" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#141311">GOAL + CONTEXT</text>
+    <text x="98" y="82" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">your request +</text>
+    <text x="98" y="97" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">fenced inputs</text>
+
+    <rect x="226" y="34" width="180" height="70" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+    <text x="316" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#141311">DECIDE</text>
+    <text x="316" y="86" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">model emits a tool call</text>
+
+    <rect x="444" y="34" width="180" height="70" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+    <text x="534" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#141311">EXECUTE</text>
+    <text x="534" y="86" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">run it, get a result</text>
+
+    <rect x="662" y="34" width="180" height="70" rx="5" fill="#F3DEDB" stroke="#9E2B25" stroke-width="2"/>
+    <text x="752" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#9E2B25">OBSERVE</text>
+    <text x="752" y="86" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">result → context</text>
+  </g>
+  <!-- forward arrows -->
+  <line x1="190" y1="69" x2="222" y2="69" stroke="#141311" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="408" y1="69" x2="440" y2="69" stroke="#141311" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="626" y1="69" x2="658" y2="69" stroke="#141311" stroke-width="1.4" marker-end="url(#ah)"/>
+  <!-- return arrow: OBSERVE bottom -> DECIDE bottom -->
+  <path d="M752,108 L752,150 Q752,166 736,166 L332,166 Q316,166 316,150 L316,108"
+        fill="none" stroke="#9E2B25" stroke-width="1.6" marker-end="url(#ahs)"/>
+  <text x="534" y="160" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" letter-spacing="0.04em" fill="#9E2B25">loop until done</text>
+  <!-- annotation -->
+  <text x="752" y="200" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#6B655B">← this step is the difference</text>
+  <text x="752" y="216" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#6B655B">and where F-1 fences output</text>
+</svg>
+<figcaption>The loop. OBSERVE — the model seeing its own action's result and re-deciding — is the whole concept.</figcaption>
+</figure>
+
+<h3>Why it matters</h3>
+<ol>
+  <li data-n="1."><b>Step 3 is the whole point.</b> The one thing separating an <em>agent</em> from a <em>chatbot</em> is that the model sees the result of its own action and decides again. Prompt→reply once becomes observe→re-decide. Everything called "agentic" is built on that single addition.</li>
+  <li data-n="2."><b>Why it's the topic now</b> <span class="note">(inferred, not reported — past my knowledge cutoff).</span> The loop is an old idea; its prerequisites crossed usable thresholds together — reliable tool-calling, multi-step instruction-following that holds across turns, and long-enough context to accumulate observations. <em>A technique becomes "the topic" when its prerequisites stop being the bottleneck.</em></li>
+  <li data-n="3."><b>What it buys us.</b> It's the only reason Touf is more than a chatbot — it chains retrieve→compute→write in one request. "Log a baseline" <em>was</em> a loop: read ledger → pull WHOOP → write journal → confirm. It runs n-of-1 analysis over your data and lets you use the record by talking to it.</li>
+  <li data-n="4."><b>Its power and its risk are the same thing.</b> Every observation fed back at step 3 is a fresh chance for injected text to hijack the next action. The loop is <em>why</em> F-1 (fencing tool output) and the sandbox exist — capability and attack surface are inseparable.</li>
+</ol>
+
+<h2><span class="n">02</span>The running system</h2>
+<p class="body">Each box is a container (<code>docker-compose.yml</code>); the host runs the LLMs and the
+health bridge outside Docker.</p>
+
+<figure>
+<svg viewBox="0 0 840 360" font-family="Inter, sans-serif">
+  <defs><marker id="bh" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6B655B"/></marker></defs>
+  <!-- browser -->
+  <rect x="16" y="150" width="140" height="56" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+  <text x="86" y="175" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700">YOU</text>
+  <text x="86" y="192" text-anchor="middle" font-family="Source Serif 4, serif" font-size="11.5" fill="#3B3732">browser / Tailscale</text>
+  <!-- odysseus core -->
+  <rect x="220" y="128" width="210" height="100" rx="6" fill="#141311"/>
+  <text x="325" y="162" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#F4F0E6">ODYSSEUS</text>
+  <text x="325" y="182" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12" fill="#C9C2B1">FastAPI · agent loop</text>
+  <text x="325" y="199" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12" fill="#C9C2B1">tool dispatcher</text>
+  <line x1="158" y1="178" x2="216" y2="178" stroke="#6B655B" stroke-width="1.4" marker-end="url(#bh)"/>
+  <!-- services right -->
+  <g font-family="JetBrains Mono, monospace" font-size="11">
+    <rect x="500" y="20"  width="200" height="44" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.1"/><text x="600" y="46" text-anchor="middle">chromadb · vectors (gold)</text>
+    <rect x="500" y="74"  width="200" height="44" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.1"/><text x="600" y="100" text-anchor="middle">searxng · web search</text>
+    <rect x="500" y="128" width="200" height="44" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.1"/><text x="600" y="154" text-anchor="middle">ntfy · notifications</text>
+    <rect x="500" y="182" width="200" height="44" rx="5" fill="#EDE7D6" stroke="#141311" stroke-width="1.1"/><text x="600" y="202" text-anchor="middle">host: Ollama (LLMs)</text><text x="600" y="218" text-anchor="middle" fill="#6B655B" font-size="10">+ ToufHealth bridge · ledger</text>
+  </g>
+  <g stroke="#6B655B" stroke-width="1.3" marker-end="url(#bh)" fill="none">
+    <line x1="430" y1="160" x2="497" y2="44"/>
+    <line x1="430" y1="168" x2="497" y2="96"/>
+    <line x1="430" y1="185" x2="497" y2="150"/>
+    <line x1="430" y1="200" x2="497" y2="200"/>
+  </g>
+  <!-- sandbox isolated -->
+  <rect x="220" y="270" width="320" height="70" rx="6" fill="#F4F0E6" stroke="#9E2B25" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="380" y="298" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700" fill="#9E2B25">SANDBOX · bash/python (Tier B)</text>
+  <text x="380" y="318" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12" fill="#3B3732">no network · read-only · non-root · no data/secret mounts</text>
+  <line x1="325" y1="228" x2="325" y2="266" stroke="#9E2B25" stroke-width="1.4" marker-end="url(#bh)"/>
+  <text x="356" y="252" font-family="JetBrains Mono, monospace" font-size="10" fill="#9E2B25">bash/python only</text>
+</svg>
+<figcaption>Services. The shell tools run in an isolated sandbox — no network, no access to your data.</figcaption>
+</figure>
+
+<h2><span class="n">03</span>The record — bronze → silver → gold</h2>
+<p class="body">Every fact is appended to a <b>hash-chained ledger</b> (each block carries the previous
+block's hash, so tampering is detectable) and graded by how trustworthy it is.</p>
+
+<figure>
+<svg viewBox="0 0 840 200" font-family="Inter, sans-serif">
+  <defs><marker id="gh" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#141311"/></marker></defs>
+  <rect x="20"  y="60" width="210" height="80" rx="5" fill="#EDE7D6" stroke="#141311" stroke-width="1.2"/>
+  <text x="125" y="92" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">BRONZE</text>
+  <text x="125" y="112" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">hash-chained ledger</text>
+  <text x="125" y="128" text-anchor="middle" font-family="Source Serif 4, serif" font-size="11.5" fill="#6B655B">source of truth · propose()</text>
+
+  <rect x="315" y="60" width="210" height="80" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+  <text x="420" y="92" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">SILVER</text>
+  <text x="420" y="112" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">derived tables</text>
+  <text x="420" y="128" text-anchor="middle" font-family="Source Serif 4, serif" font-size="11.5" fill="#6B655B">daily_log · events</text>
+
+  <rect x="610" y="60" width="210" height="80" rx="5" fill="#F4F0E6" stroke="#141311" stroke-width="1.2"/>
+  <text x="715" y="92" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">GOLD</text>
+  <text x="715" y="112" text-anchor="middle" font-family="Source Serif 4, serif" font-size="12.5" fill="#3B3732">ChromaDB vectors</text>
+  <text x="715" y="128" text-anchor="middle" font-family="Source Serif 4, serif" font-size="11.5" fill="#6B655B">semantic search</text>
+
+  <line x1="232" y1="100" x2="311" y2="100" stroke="#141311" stroke-width="1.4" marker-end="url(#gh)"/>
+  <line x1="527" y1="100" x2="606" y2="100" stroke="#141311" stroke-width="1.4" marker-end="url(#gh)"/>
+  <text x="568" y="88" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#9E2B25">verify chain</text>
+  <text x="420" y="172" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#6B655B">a tampered chain is never projected to gold</text>
+</svg>
+<figcaption>The three tiers. Gold is rebuilt only from a verified chain.</figcaption>
+</figure>
+
+<h3>Confidence taxonomy — every fact is graded</h3>
+<div class="chips">
+  <span class="chip" style="background:var(--measured)">MEASURED</span>
+  <span class="chip" style="background:var(--observed)">OBSERVED</span>
+  <span class="chip" style="background:var(--inferred)">INFERRED</span>
+  <span class="chip" style="background:var(--claimed)">CLAIMED</span>
+</div>
+<p class="body">MEASURED = directly captured (a lab, a WHOOP reading) · OBSERVED = credible secondhand
+(a clinician note) · INFERRED = model/expert judgment · CLAIMED = your own self-report.</p>
+
+<h2><span class="n">04</span>Security — the loop is the surface</h2>
+<p class="body">Because you're the single admin, the agent runs with every tool. So the defense rests on
+two pillars: <b>fencing</b> (untrusted text wrapped as data, not instructions) and <b>sandboxing</b>
+(even a fooled model can't reach secrets, network, or data).</p>
+<div class="callout"><p><b>The principle:</b> the same step-3 feedback that makes the loop powerful is
+the injection surface. F-1 fences tool output at that exact point; the sandbox removes the payoff for
+the worst sinks (<code>bash</code>/<code>python</code>). Power and risk are one mechanism.</p></div>
+<p class="note">Full audit: <code>docs/security/agent-tool-attack-surface.md</code> (findings F-1…F-7) ·
+sandbox tiers A/B/C: <code>docs/security/bash-python-sandbox-scoping.md</code>.</p>
+
+<footer>
+Touf / Odysseus — architecture (draft for review). Companion to docs/ARCHITECTURE.md.<br>
+Diagrams are vector/SVG in the AEP design system — no stock imagery. Confidence colors are
+semantic and fixed. Generated 2026-06-12.
+</footer>
+
+</div>
+</body>
+</html>
