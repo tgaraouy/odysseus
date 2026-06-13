@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 import time
 import collections
@@ -102,15 +103,33 @@ async def _run_subprocess_streaming(
 
 class BashTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import agent_cwd, _truncate
+        from src.tool_execution import (
+            sandbox_subproc_cwd, _sandbox_env, _SANDBOX_PREEXEC,
+            _format_sandbox_result, _SANDBOX_FALLBACK_LOCAL, _truncate,
+        )
+        from src.sandbox_client import sandbox_enabled, run_in_sandbox, SandboxUnavailable
         progress_cb = ctx.get("progress_cb")
-        _subproc_env = ctx.get("subproc_env")
+        # Tier B: dispatch into the isolated sidecar when configured (fail-closed).
+        if sandbox_enabled():
+            try:
+                res = await run_in_sandbox("bash", content, timeout=DEFAULT_BASH_TIMEOUT)
+                return _format_sandbox_result("bash", DEFAULT_BASH_TIMEOUT, res)
+            except SandboxUnavailable as e:
+                if not _SANDBOX_FALLBACK_LOCAL:
+                    return {"error": f"bash: sandbox unavailable ({e}). Refusing to run "
+                                     f"unconfined; set SANDBOX_FALLBACK_LOCAL=true to override.",
+                            "exit_code": 1}
+                logging.getLogger(__name__).warning("Sandbox unavailable; local bash: %s", e)
+        # Tier A: scrubbed env + scratch cwd + rlimits.
+        cwd = sandbox_subproc_cwd()
+        _subproc_env = _sandbox_env(cwd)
         proc = await asyncio.create_subprocess_shell(
             content,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,
-            cwd=agent_cwd(),
+            cwd=cwd,
+            preexec_fn=_SANDBOX_PREEXEC,
         )
         stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
             proc,
@@ -128,15 +147,31 @@ class BashTool:
 
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import agent_cwd, _truncate
+        from src.tool_execution import (
+            sandbox_subproc_cwd, _sandbox_env, _SANDBOX_PREEXEC,
+            _format_sandbox_result, _SANDBOX_FALLBACK_LOCAL, _truncate,
+        )
+        from src.sandbox_client import sandbox_enabled, run_in_sandbox, SandboxUnavailable
         progress_cb = ctx.get("progress_cb")
-        _subproc_env = ctx.get("subproc_env")
+        if sandbox_enabled():
+            try:
+                res = await run_in_sandbox("python", content, timeout=DEFAULT_PYTHON_TIMEOUT)
+                return _format_sandbox_result("python", DEFAULT_PYTHON_TIMEOUT, res)
+            except SandboxUnavailable as e:
+                if not _SANDBOX_FALLBACK_LOCAL:
+                    return {"error": f"python: sandbox unavailable ({e}). Refusing to run "
+                                     f"unconfined; set SANDBOX_FALLBACK_LOCAL=true to override.",
+                            "exit_code": 1}
+                logging.getLogger(__name__).warning("Sandbox unavailable; local python: %s", e)
+        cwd = sandbox_subproc_cwd()
+        _subproc_env = _sandbox_env(cwd)
         proc = await asyncio.create_subprocess_exec(
             (sys.executable or "python"), "-I", "-c", content,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,
-            cwd=agent_cwd(),
+            cwd=cwd,
+            preexec_fn=_SANDBOX_PREEXEC,
         )
         stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
             proc,

