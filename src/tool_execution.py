@@ -136,14 +136,16 @@ def _tool_path_roots() -> list[str]:
     return out
 
 
-def _resolve_tool_path(raw_path: str) -> str:
+def _resolve_tool_path(raw_path: str, for_write: bool = False) -> str:
     """Resolve and confine a model-supplied path.
 
     Order of checks:
       1. Non-empty path.
       2. Sensitive-subpath deny list (blocks .ssh, .gnupg, etc.
          even when the root is on the allowlist).
-      3. Allowlist containment (must land under one of the roots).
+      3. Write-protected deny list (for_write only): append-only/integrity
+         paths like the ledger chain are readable but never writable here.
+      4. Allowlist containment (must land under one of the roots).
 
     Returns the realpath on success. Raises ValueError on rejection.
     Symlinks are resolved before comparison.
@@ -153,7 +155,7 @@ def _resolve_tool_path(raw_path: str) -> str:
     """
     ws = get_active_workspace()
     if ws:
-        return _resolve_tool_path_in_workspace(ws, raw_path)
+        return _resolve_tool_path_in_workspace(ws, raw_path, for_write=for_write)
     if raw_path is None or not str(raw_path).strip():
         raise ValueError("path is required")
     expanded = os.path.expanduser(str(raw_path).strip())
@@ -163,6 +165,12 @@ def _resolve_tool_path(raw_path: str) -> str:
         raise ValueError(
             f"path '{raw_path}' is inside a sensitive directory "
             f"(e.g. .ssh, .gnupg) or matches a sensitive filename"
+        )
+
+    if for_write and _is_write_protected_path(resolved):
+        raise ValueError(
+            f"path '{raw_path}' is append-only (the ledger chain) and cannot be "
+            f"written directly; use the ledger's propose() path instead"
         )
 
     for root in _tool_path_roots():
@@ -179,14 +187,15 @@ def _resolve_tool_path(raw_path: str) -> str:
     )
 
 
-def _resolve_tool_path_in_workspace(workspace: str, raw_path: str) -> str:
+def _resolve_tool_path_in_workspace(workspace: str, raw_path: str, for_write: bool = False) -> str:
     """Confine a model-supplied path to the active workspace.
 
     Layered on top of upstream's path policy: the workspace is the allowed
     root (relative paths resolve under it; paths that escape it are rejected),
     and the sensitive-file deny list (.ssh, .gnupg, id_rsa, …) still applies
     inside it. When no workspace is set, callers use _resolve_tool_path (the
-    default data/tmp allowlist) instead.
+    default data/tmp allowlist) instead. for_write additionally blocks the
+    append-only ledger subtree (reads stay allowed).
     """
     if raw_path is None or not str(raw_path).strip():
         raise ValueError("path is required")
@@ -198,6 +207,11 @@ def _resolve_tool_path_in_workspace(workspace: str, raw_path: str) -> str:
         raise ValueError(
             f"path '{raw_path}' is inside a sensitive directory "
             f"(e.g. .ssh, .gnupg) or matches a sensitive filename"
+        )
+    if for_write and _is_write_protected_path(resolved):
+        raise ValueError(
+            f"path '{raw_path}' is append-only (the ledger chain) and cannot be "
+            f"written directly; use the ledger's propose() path instead"
         )
     if resolved != base:
         # normcase so containment holds on case-insensitive filesystems
@@ -261,6 +275,152 @@ def agent_cwd() -> str:
     """Working directory for agent subprocesses (bash/python/background jobs):
     the active workspace when set, else the persistent data dir."""
     return get_active_workspace() or _AGENT_WORKDIR
+
+
+# ---------------------------------------------------------------------------
+# Append-only / integrity-critical paths (F-6). The ledger is hash-chained and
+# tamper-evident; its only legitimate writer is the append-only propose() path,
+# NOT write_file/edit_file. These paths stay READABLE (the agent inspects health
+# data) but are never writable via the file tools. See
+# docs/security/agent-tool-attack-surface.md (F-6).
+# ---------------------------------------------------------------------------
+_WRITE_PROTECTED_SUBDIRS: tuple[str, ...] = ("ledger",)
+
+
+def _is_write_protected_path(resolved: str) -> bool:
+    """True if *resolved* is an append-only path that must not be written via
+    write_file/edit_file. Reads are unaffected."""
+    try:
+        data_real = os.path.realpath(DATA_DIR)
+    except OSError:
+        data_real = DATA_DIR
+    protected_roots = [os.path.join(data_real, d) for d in _WRITE_PROTECTED_SUBDIRS]
+    ledger_override = os.environ.get("LEDGER_DIR")
+    if ledger_override:
+        try:
+            protected_roots.append(os.path.realpath(ledger_override))
+        except OSError:
+            pass
+    for proot in protected_roots:
+        if resolved == proot:
+            return True
+        try:
+            if os.path.commonpath([resolved, proot]) == proot:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+# ---------------------------------------------------------------------------
+# bash/python sandboxing (F-7 / R-1 Tiers A & B).
+# Tier A (in-process, always on): the subprocess gets a benign-var env allowlist
+# (never **os.environ, so an injected `env` can't exfiltrate secrets), a
+# dedicated scratch cwd/HOME (not the data root), and setrlimit caps. Tier B
+# dispatches into the isolated sidecar runner when SANDBOX_RUNNER_SOCK is set.
+# See docs/security/bash-python-sandbox-scoping.md.
+# ---------------------------------------------------------------------------
+_AGENT_SCRATCH = str(pathlib.Path(_AGENT_WORKDIR) / "sandbox")
+try:
+    os.makedirs(_AGENT_SCRATCH, exist_ok=True)
+except OSError:
+    pass
+
+_SANDBOX_ENV_ALLOW: tuple[str, ...] = (
+    "PATH", "TERM", "COLUMNS", "LINES",
+    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ",
+    "TMPDIR", "TEMP", "TMP",
+    "PYTHONIOENCODING", "PYTHONUNBUFFERED",
+    "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "NUMBER_OF_PROCESSORS", "OS",
+)
+
+
+def _sandbox_env(home: str) -> Dict[str, str]:
+    """Minimal env for agent subprocesses: an allowlist of benign vars only.
+    Secrets in os.environ are NEVER passed. Admins can opt a specific var back in
+    via the `tool_env_passthrough` setting (mirrors tool_path_extra_roots)."""
+    env = {k: os.environ[k] for k in _SANDBOX_ENV_ALLOW if k in os.environ}
+    env.setdefault("PATH", os.defpath)
+    env["HOME"] = home
+    env["TERM"] = "xterm-256color"
+    env["COLUMNS"] = "120"
+    env["LINES"] = "40"
+    try:
+        from src.settings import get_setting
+        extra = get_setting("tool_env_passthrough")
+        if isinstance(extra, list):
+            for name in extra:
+                if isinstance(name, str) and name in os.environ:
+                    env[name] = os.environ[name]
+    except Exception:
+        pass
+    return env
+
+
+def sandbox_subproc_cwd() -> str:
+    """cwd/HOME for sandboxed subprocesses: the workspace if set, else the
+    dedicated scratch dir (NOT the data root, which holds sessions.json, the
+    ledger, .ssh)."""
+    return get_active_workspace() or _AGENT_SCRATCH
+
+
+_SANDBOX_RLIMIT_CPU_SECONDS = int(os.getenv("SANDBOX_RLIMIT_CPU", "120"))
+_SANDBOX_RLIMIT_FSIZE_BYTES = int(os.getenv("SANDBOX_RLIMIT_FSIZE", str(512 * 1024 * 1024)))
+_SANDBOX_RLIMIT_NPROC = int(os.getenv("SANDBOX_RLIMIT_NPROC", "512"))
+_SANDBOX_RLIMIT_AS_BYTES = int(os.getenv("SANDBOX_RLIMIT_AS", "0"))
+
+
+def _sandbox_preexec() -> None:
+    """preexec_fn for agent subprocesses: apply resource limits (POSIX only).
+    Best-effort; only lowers limits, never raises above the inherited hard cap."""
+    try:
+        import resource
+    except ImportError:
+        return
+
+    def _cap(which: int, soft: int) -> None:
+        if not soft or soft <= 0:
+            return
+        try:
+            hard = resource.getrlimit(which)[1]
+            ceiling = soft if hard == resource.RLIM_INFINITY else min(soft, hard)
+            resource.setrlimit(which, (ceiling, hard))
+        except (ValueError, OSError):
+            pass
+
+    _cap(resource.RLIMIT_CPU, _SANDBOX_RLIMIT_CPU_SECONDS)
+    _cap(resource.RLIMIT_FSIZE, _SANDBOX_RLIMIT_FSIZE_BYTES)
+    if hasattr(resource, "RLIMIT_NPROC"):
+        _cap(resource.RLIMIT_NPROC, _SANDBOX_RLIMIT_NPROC)
+    if hasattr(resource, "RLIMIT_AS"):
+        _cap(resource.RLIMIT_AS, _SANDBOX_RLIMIT_AS_BYTES)
+
+
+# preexec_fn is POSIX-only; passing a non-None value on Windows raises ValueError.
+_SANDBOX_PREEXEC = _sandbox_preexec if os.name == "posix" else None
+
+# Tier-B: when the sandbox runner is reachable but errors, fail CLOSED by default.
+_SANDBOX_FALLBACK_LOCAL = os.getenv("SANDBOX_FALLBACK_LOCAL", "false").lower() in ("1", "true", "yes")
+
+
+def _format_sandbox_result(tool: str, timeout: int, res: Dict[str, Any]) -> Dict[str, Any]:
+    """Map the sidecar runner's {stdout,stderr,exit_code,timed_out,error} to the
+    same result shapes the local bash/python path returns."""
+    if res.get("error"):
+        return {"error": f"{tool}: sandbox: {res['error']}", "exit_code": res.get("exit_code", 1)}
+    if res.get("timed_out"):
+        return {
+            "error": f"{tool}: timed out after {timeout}s — process killed",
+            "exit_code": 124,
+            "stdout": _truncate(res.get("stdout", ""), MAX_OUTPUT_CHARS),
+            "stderr": _truncate(res.get("stderr", ""), MAX_OUTPUT_CHARS),
+        }
+    output = (res.get("stdout") or "").rstrip()
+    err = (res.get("stderr") or "").rstrip()
+    if err:
+        output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
+    output = _truncate(output, MAX_OUTPUT_CHARS)
+    return {"output": output or "(no output)", "exit_code": res.get("exit_code") or 0}
 
 
 def get_mcp_manager():

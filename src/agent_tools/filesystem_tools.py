@@ -58,7 +58,7 @@ class EditFileTool:
         if not raw_path:
             return {"error": "edit_file: path required", "exit_code": 1}
         try:
-            path = _resolve_tool_path(raw_path)
+            path = _resolve_tool_path(raw_path, for_write=True)
         except ValueError as e:
             return {"error": f"edit_file: {e}", "exit_code": 1}
         if old == "":
@@ -161,7 +161,7 @@ class WriteFileTool:
         raw_path = lines[0].strip()
         body = lines[1] if len(lines) > 1 else ""
         try:
-            path = _resolve_tool_path(raw_path)
+            path = _resolve_tool_path(raw_path, for_write=True)
         except ValueError as e:
             return {"error": f"write_file: {e}", "exit_code": 1}
         try:
