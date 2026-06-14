@@ -646,6 +646,18 @@ async def health_journal_post(request: Request):
         v = (body.get(k) or "").strip()
         if v:
             fields[k] = v
+    # Vision & mindset journal: three trendable 1-10 scores + reflective prose.
+    for k in ("conviction", "frequency", "faith_vision"):
+        try:
+            v = int(body.get(k) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v:
+            fields[k] = v
+    for k in ("north_star", "sweet_spot", "todays_win", "choosing_belief", "release_anchor"):
+        v = (body.get(k) or "").strip()
+        if v:
+            fields[k] = v
     if "date" in body and body.get("date"):
         fields["date"] = str(body["date"])[:10]
     if not fields:
