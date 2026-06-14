@@ -634,6 +634,18 @@ async def health_journal_post(request: Request):
         fields["uric_acid"] = ua
     if body.get("flare") is not None:
         fields["flare"] = 1 if body.get("flare") else 0
+    # Daily reflective-journal: six trendable 1-10 scores + reflective prose.
+    for k in ("feel", "mental_health", "health_rating", "relationships", "ambition", "self_love"):
+        try:
+            v = int(body.get(k) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v:
+            fields[k] = v
+    for k in ("on_my_mind", "yesterday", "life_advice", "action_today", "week_going"):
+        v = (body.get(k) or "").strip()
+        if v:
+            fields[k] = v
     if "date" in body and body.get("date"):
         fields["date"] = str(body["date"])[:10]
     if not fields:
