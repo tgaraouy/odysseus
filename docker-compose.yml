@@ -40,7 +40,10 @@ services:
       - ODYSSEUS_ADMIN_USER=${ODYSSEUS_ADMIN_USER:-admin}
       - ODYSSEUS_ADMIN_PASSWORD=${ODYSSEUS_ADMIN_PASSWORD:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
-      - SECURE_COOKIES=${SECURE_COOKIES:-false}
+      # Session cookies marked Secure (you reach the app over HTTPS via Tailscale;
+      # browsers also treat http://localhost as a secure context). Override to
+      # false in .env only if you must use a plain-HTTP origin.
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
       - EMBEDDING_URL=${EMBEDDING_URL:-}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
@@ -104,13 +107,21 @@ services:
     restart: unless-stopped
 
   chromadb:
-    image: docker.io/chromadb/chroma:latest
+    # Pinned by digest (NOT :latest) — a `latest` roll to 1.0.0 caused a
+    # client/server skew ('_type' KeyError) that broke Odysseus RAG/memory.
+    # Bump deliberately after verifying the client (requirements: chromadb-client)
+    # is compatible. This digest = the 1.x server the host gold-tier already uses.
+    image: docker.io/chromadb/chroma@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
     ports:
       - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
     volumes:
       - chromadb-data:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   searxng:
@@ -172,6 +183,10 @@ services:
       - ntfy-cache:/var/cache/ntfy
     environment:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:

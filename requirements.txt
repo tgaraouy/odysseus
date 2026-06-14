@@ -15,7 +15,9 @@ numpy
 # still degrades to keyword fallback if they're ever missing.
 # chromadb-client is the lightweight HTTP client (talks to a standalone
 # ChromaDB service); fastembed runs local ONNX embeddings.
-chromadb-client
+# Pinned to match the 1.x server: unpinned resolved to 0.6.3, which can't parse
+# the 1.0.0 server's collection-config response ('_type' KeyError) -> RAG/memory broke.
+chromadb-client==1.5.9
 fastembed
 youtube-transcript-api
 # Markdown rendering for research reports (src/visual_report.py).
