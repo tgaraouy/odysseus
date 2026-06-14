@@ -13,21 +13,21 @@ RUN apt-get update \
 
 COPY runner.py /runner.py
 
-# Non-root runner. The /ipc and /work mount points are created and chowned to the
-# runner user at BUILD time; when the shared `sandbox-ipc` named volume is first
-# mounted (empty), Docker initialises it from this directory's ownership, so the
-# non-root user can create the socket there without any runtime chown (which
-# cap_drop:ALL would forbid). 0755 on /ipc lets the app container's user traverse
-# to connect to the 0666 socket.
-RUN useradd --uid 65532 --no-create-home --shell /usr/sbin/nologin sandbox \
-    && mkdir -p /ipc /work \
-    && chown sandbox:sandbox /ipc /work \
-    && chmod 0755 /ipc /work
+# Non-root runner, uid 1000 to MATCH the app container's PUID. The shared
+# `sandbox-ipc` volume is owned by the app's uid (1000) — its entrypoint chowns
+# mounted volumes — so the runner must be 1000 to create/replace its socket there
+# (cap_drop:ALL forbids a runtime chown). 65532 could not write the 1000-owned
+# volume, so it crash-looped on bind with a stale socket present. 1000 is still
+# non-root; isolation (no network, read-only rootfs, no mounts, dropped caps)
+# is unchanged. /ipc 0775 + the runner's 0666 socket let both containers connect.
+RUN mkdir -p /ipc /work \
+    && chown 1000:1000 /ipc /work \
+    && chmod 0775 /ipc /work
 
 ENV RUNNER_SOCK=/ipc/runner.sock \
     RUNNER_WORKDIR=/work \
     PYTHONUNBUFFERED=1
 
-USER 65532:65532
+USER 1000:1000
 
 ENTRYPOINT ["python", "/runner.py"]
