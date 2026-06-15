@@ -11,6 +11,18 @@ integrations to wire, what the charter seeds, what `/health` surfaces, what gets
 > Rule: nothing below is assumed. Every blank is the user's to fill. The agent's job in intake is
 > to *elicit*, not prescribe.
 
+## Collaboration model & where this lives
+- **Specialized agent + FDE.** Discovery is collaborative: a specialized intake agent elicits,
+  and a **Forward-Deployed Engineer (FDE)** shapes/translates intent into spec. *First run:
+  Tawfik is both the first user and the FDE.*
+- **Held in the Odysseus shell.** This process and its artifacts (the spec, the data inventory,
+  the intent/outcome statements) live **inside Odysseus** — as documents, memory, and ledger
+  entries — not as static repo files. The empty Odysseus shell *is* the container for discovery,
+  so it can be iterated in the app during the discovery phase. (Repo `user-spec.md` = the
+  template; the real one is the live copy in the instance.)
+- **The two drivers.** §1 Intent and §2 Outcomes **drive everything below** — data, context,
+  boundaries, and the mandate all derive from them. Define them first.
+
 ---
 
 ## 1 · Intent — why are you here? (the job to be done)
@@ -23,9 +35,13 @@ integrations to wire, what the charter seeds, what `/health` surfaces, what gets
 - How would **you** know it's working — the one signal that matters to you?
 - > _[blank — measurable where possible]_
 
-## 3 · Data you own — inventory (we discover, never assume)
-For each: *do you have it? · what form? · where does it live?* → each "have it" becomes an
-ingestion source.
+## 3 · Data you own — inventory (iterative; sequenced easy × impact)
+Not a one-shot dump. **Sequence by (easy to get) × (direct impact)** — bring in the
+high-impact / low-friction sources first, prove value, then widen. For each: *do you have it? ·
+what form? · where does it live?* → each "have it" becomes an ingestion source.
+
+*Starter tier (Tawfik, already flowing): WHOOP (connected), home urate + daily journal, labs
+(on hand, high-impact for the conditions), meds/supplements protocol.* Widen from there.
 
 | Data | Have it? | Form / where |
 |---|---|---|
@@ -45,10 +61,14 @@ ingestion source.
 - Clinicians involved: _[blank]_
 - What you've already tried (and what happened): _[blank]_
 
-## 5 · Boundaries & values
-- Sovereignty/privacy: what must **never** leave your device? what's off-limits? _[blank]_
-- What you will / won't do (effort, routines, diet, time): _[blank]_
-- Who else, if anyone, sees this: _[blank]_
+## 5 · Boundaries — **cross-cutting** (a pass over every dimension)
+Boundaries aren't one section; each dimension carries its own. Define them per dimension:
+- **Intent boundary** — what this is explicitly *not* for. _[blank]_
+- **Outcome boundary** — outcomes you do *not* want optimized (e.g. not weight at the cost of X). _[blank]_
+- **Data boundary** — what must **never** leave the device · what you won't ingest at all. _[blank]_
+- **Context boundary** — what's off-limits to discuss / out of scope clinically. _[blank]_
+- **Action boundary** — what the agent may **never** do without you (send, change meds, share). _[blank]_
+- **Access boundary** — who, if anyone, else sees this. _[blank]_
 
 ## 6 · The agent's mandate — *derived* from 1–5 (the bridge to provisioning)
 | Mandate | Comes from | For this user |
