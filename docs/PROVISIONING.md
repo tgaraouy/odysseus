@@ -68,6 +68,20 @@ install these for you (they need your admin consent / accounts).
 - The new machine's home path is substituted into the `launchd` plists and `LEDGER_DB`
   (`<repo>/data/ledger/health.ledger.db`). No hardcoded `/Users/tgaraouy/...`.
 
+### B8 — Email *(optional)*
+IMAP/SMTP host, port, username, app-password. Stored encrypted in-app (`src/secret_storage.py`),
+configured in Settings after first login — `provision.sh` records intent; the user pastes the
+app-password in the UI (never in `.env`).
+
+### B9 — Calendar *(optional)*
+CalDAV URL + credentials (or Google Calendar OAuth). Same handling as email — in-app, encrypted.
+
+### B10 — Existing-user import *(optional)*
+If migrating from an existing instance, point provisioning at an export to seed the new machine:
+the **ledger** (`*.ledger.db` — hash-chained, verifiable on import), `protocol.yaml`, prior
+`data/` (settings, memories, documents). Default = **fresh start** (empty template). *This is the
+big fork — see §E and `docs/user-spec.md`.*
+
 ---
 
 ## C. Created on first run (generated, not asked)
