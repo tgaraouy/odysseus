@@ -1,7 +1,7 @@
 # HANDOFF — where we are (read this first)
 
 For any fresh Claude session (this Mac *or* the mini PC). The chat doesn't travel; this file +
-the git history do. Last updated **2026-06-15**.
+the git history do. Last updated **2026-06-16**.
 
 > **To resume the original session on this Mac:** `claude --resume` (pick it) or `claude -c`
 > from `~/odysseus/odysseus`. A fresh session: read this file + `git log --oneline -30`.
@@ -9,10 +9,12 @@ the git history do. Last updated **2026-06-15**.
 ---
 
 ## The two repos
-| Repo | Remote | Branch | Local (this Mac) |
-|---|---|---|---|
-| **Odysseus** (agent platform) | `github.com/tgaraouy/odysseus` (fork; upstream `pewdiepie-archdaemon` is read-only) | `setup/local-docker-browser-mcp` | `~/odysseus/odysseus` |
-| **MyOwnHealth** (health bridge, was "ToufHealth") | `github.com/tgaraouy/MyOwnHealth` | `feature/odysseus-mcp-bridge` | `~/projects/health-experiment-studio` |
+| Repo | Remote | Branch | Local (this Mac) | Latest pushed |
+|---|---|---|---|---|
+| **Odysseus** (agent platform) | `github.com/tgaraouy/odysseus` (git remote **`fork`**; `origin` is the read-only upstream `pewdiepie-archdaemon`) | `setup/local-docker-browser-mcp` | `~/odysseus/odysseus` | `1344df7` (bridge containerization) |
+| **MyOwnHealth** (health bridge, was "ToufHealth") | `github.com/tgaraouy/MyOwnHealth` (`origin`) | `feature/odysseus-mcp-bridge` | `~/projects/health-experiment-studio` | `5792f1c` (bridge containerization) |
+
+> Push Odysseus with `git push fork <branch>` (NOT `origin` — that's upstream and 403s).
 
 ## The live system (this Mac only)
 Docker stack (`odysseus`, `chromadb`, `searxng`, `ntfy`, `sandbox`) + host **Ollama** +
