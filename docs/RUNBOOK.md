@@ -5,9 +5,8 @@ Copy-paste friendly. Pairs with `docs/PROVISIONING.md` (what/why) and `docs/user
 discovery itself).
 
 > **Assumes macOS** (Mac mini or similar), admin access, ~25 GB free, internet.
-> **Not a Mac?** Steps 1–5 (the Docker stack) work the same. Step 7 (bridge service) differs —
-> Linux uses `systemd` (`install-service.sh` + `odysseus-ui.service`), Windows differs again.
-> Tell me your mini-PC OS and I'll add that path.
+> **Windows mini PC?** See the Windows section at the bottom — run it under **WSL2**, then this
+> runbook applies almost verbatim. **Linux?** Same, with `systemd` instead of step 7's launchd.
 
 ---
 
@@ -102,6 +101,35 @@ This shell is now the **holder**. Run the intake from `docs/user-spec.md`:
 *(When you want it agent-run: I'll build the specialized Intake agent + seed the spec into the instance.)*
 
 ---
+
+---
+
+## Windows mini PC — run it under WSL2 (recommended)
+Native Windows has a no-Docker launcher (`launch-windows.ps1`) but it **skips the sandbox /
+chromadb / searxng services** — degraded and unhardened. For a faithful install, use **WSL2**
+(a real Linux env), then steps 1–10 above apply almost verbatim from inside Ubuntu.
+
+```powershell
+# In Windows PowerShell (admin), once:
+wsl --install -d Ubuntu       # installs WSL2 + Ubuntu; reboot if prompted
+```
+Then **install on the Windows host (not inside WSL):**
+- **Docker Desktop for Windows** → Settings → Resources → WSL integration → enable for Ubuntu.
+- **Ollama for Windows** (runs on the Windows host; `ollama pull` the 3 models from step 2).
+- **Tailscale for Windows.**
+
+Now open **Ubuntu (WSL2)** and run the runbook there:
+- Steps 1 (uv, git only — Docker/Ollama already on the host), 2 (models already pulled), 3–6
+  work as written. Ollama is reachable from containers via `host.docker.internal:11434` (same as
+  Mac) and from WSL shell via `localhost:11434` (WSL2 forwards localhost to Windows).
+- **Step 7 (services):** no launchd. Enable systemd in WSL2 (`/etc/wsl.conf` → `[boot]
+  systemd=true`, then `wsl --shutdown` and reopen), and run the bridge + timers as **systemd
+  user services / timers** (translate the 4 launchd plists). *Untested by us — flag if it fights.*
+- **Step 8 (Tailscale):** `tailscale serve` from the Windows host pointing at the WSL2 app port.
+
+> **Honest:** the Docker stack on WSL2 is well-trodden; the **bridge-as-a-systemd-service inside
+> WSL2** is the one piece we haven't run. Expect to iterate there. Paths become
+> `/home/<you>/...` (Linux), not `/Users/...`.
 
 ## Honest gaps to close (so this is a clean kit)
 1. **ToufHealth has no git remote** — step 3 needs a manual copy. Fix: push `mcp/` to a repo.
