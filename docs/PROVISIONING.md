@@ -1,4 +1,4 @@
-# Provisioning a new laptop — Odysseus + ToufHealth
+# Provisioning a new laptop — Odysseus + MyOwnHealth
 
 Everything a fresh machine needs to run a per-user, data-owned health agent. Two parts:
 **(A) pre-install infrastructure** that must already exist, and **(B) foundation data** the
@@ -17,7 +17,7 @@ installer asks each user for. `scripts/provision.sh` checks A and collects B.
 | **Docker Desktop** (running) | runs the stack: `odysseus`, `chromadb`, `searxng`, `ntfy`, `sandbox` | **required** | docker.com |
 | **Ollama** (native on host, running) | local LLMs — chat, vision, embeddings | **required** | ollama.com |
 | └ **Ollama models pulled** | `gemma4` (chat), `llama3.2-vision:11b` (vision), an embedding model (`nomic-embed-text`) | **required** | `ollama pull <model>` |
-| **Python 3.12** | ToufHealth bridge runtime | required *(health features)* | python.org |
+| **Python 3.12** | MyOwnHealth bridge runtime | required *(health features)* | python.org |
 | **uv** | builds the bridge venv (`mcp/.venv`) | required *(health features)* | astral.sh/uv |
 | **Git** | clone the repos | required | — |
 | **Disk ≥ ~25 GB free** | Docker images + Ollama models + fastembed cache | required | — |

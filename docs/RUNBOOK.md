@@ -1,4 +1,4 @@
-# Install runbook — Odysseus + ToufHealth on a fresh machine
+# Install runbook — Odysseus + MyOwnHealth on a fresh machine
 
 Every step, in order, to take a bare machine to a running shell ready for the discovery phase.
 Copy-paste friendly. Pairs with `docs/PROVISIONING.md` (what/why) and `docs/user-spec.md` (the
@@ -38,10 +38,9 @@ ollama pull nomic-embed-text
 # Odysseus — from your fork, the working branch:
 mkdir -p ~/odysseus && git clone -b setup/local-docker-browser-mcp \
   https://github.com/tgaraouy/odysseus.git ~/odysseus/odysseus
+# MyOwnHealth bridge:
+git clone https://github.com/tgaraouy/MyOwnHealth.git ~/myownhealth
 ```
-**ToufHealth bridge — has no git remote yet.** Copy `mcp/` + `charters/` from your main laptop to
-`~/projects/health-experiment-studio/` (rsync/USB), **or** push it to a repo first and clone it.
-*(Flag: this is a gap to close — see bottom.)*
 
 ## 4 · Provision (preflight + foundation data)
 ```bash
@@ -55,9 +54,9 @@ docker compose up -d --build
 docker compose ps            # all Up; 'sandbox' Up (not Restarting)
 ```
 
-## 6 · Set up the ToufHealth bridge
+## 6 · Set up the MyOwnHealth bridge
 ```bash
-cd ~/projects/health-experiment-studio
+cd ~/myownhealth
 uv venv --python 3.12 mcp/.venv
 uv pip install --python mcp/.venv -r mcp/requirements.txt
 # The ledger GENESIS auto-seeds from charters/health.charter.yaml on the bridge's first run — no manual seed.
@@ -66,14 +65,14 @@ uv pip install --python mcp/.venv -r mcp/requirements.txt
 ## 7 · Install the bridge services (launchd timers — macOS)
 The 4 plists carry absolute paths; template them to THIS machine, then load:
 ```bash
-cd ~/projects/health-experiment-studio
-for p in com.toufhealth.mcp com.toufhealth.projection com.toufhealth.weeklyquery com.toufhealth.apollo; do
-  sed "s#/Users/tgaraouy/projects/health-experiment-studio#$HOME/projects/health-experiment-studio#g; \
+cd ~/myownhealth
+for p in com.myownhealth.mcp com.myownhealth.projection com.myownhealth.weeklyquery com.myownhealth.apollo; do
+  sed "s#/Users/tgaraouy/projects/health-experiment-studio#$HOME/myownhealth#g; \
        s#/Users/tgaraouy/odysseus/odysseus#$HOME/odysseus/odysseus#g" \
        "mcp/$p.plist" > "$HOME/Library/LaunchAgents/$p.plist"
   launchctl load -w "$HOME/Library/LaunchAgents/$p.plist"
 done
-launchctl list | grep toufhealth      # all four listed
+launchctl list | grep myownhealth      # all four listed
 ```
 *(If you put the repos elsewhere, adjust the two source paths in the `sed`.)*
 
@@ -86,7 +85,7 @@ tailscale serve status       # shows your https://<machine>.<tailnet>.ts.net URL
 
 ## 9 · Verify
 ```bash
-docker compose logs odysseus | grep -i ToufHealth | tail -1   # expect: "... 24 tools via http"
+docker compose logs odysseus | grep -iE "MyOwnHealth|24 tools" | tail -1   # expect: "... 24 tools via http"
 ```
 - Open `http://localhost:7000` (or the Tailscale URL) → log in as your admin user.
 - `/health` and `/ledger` render. *(With `SECURE_COOKIES=true`, use HTTPS/Tailscale or localhost.)*
@@ -132,7 +131,6 @@ Now open **Ubuntu (WSL2)** and run the runbook there:
 > `/home/<you>/...` (Linux), not `/Users/...`.
 
 ## Honest gaps to close (so this is a clean kit)
-1. **ToufHealth has no git remote** — step 3 needs a manual copy. Fix: push `mcp/` to a repo.
-2. **provision.sh doesn't auto-template/install the plists** (step 7 is manual) — fold it in.
-3. **macOS only** for step 7 — add the Linux/systemd path if the mini PC isn't a Mac.
-4. **Charter/protocol are shared defaults** — per-user protocol still starts empty (by design).
+1. **provision.sh doesn't auto-template/install the plists** (step 7 is manual) — fold it in.
+2. **macOS only** for step 7 — add the Linux/systemd path if the mini PC isn't a Mac.
+3. **Charter/protocol are shared defaults** — per-user protocol still starts empty (by design).

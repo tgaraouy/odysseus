@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # provision.sh — preflight the pre-install infrastructure and collect the foundation
-# data for a new Odysseus + ToufHealth install. See docs/PROVISIONING.md.
+# data for a new Odysseus + MyOwnHealth install. See docs/PROVISIONING.md.
 # Read-only on the system; writes .env, mcp/.env, data/settings.json only.
 set -uo pipefail
 
