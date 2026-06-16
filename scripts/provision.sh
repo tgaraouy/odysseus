@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision.sh — preflight the pre-install infrastructure and collect the foundation
 # data for a new Odysseus + MyOwnHealth install. See docs/PROVISIONING.md.
-# Read-only on the system; writes .env, mcp/.env, data/settings.json only.
+# Read-only on the system; writes .env, <bridge>/mcp/.env, data/settings.json only.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -80,6 +80,9 @@ BRAVE=$(ask "DATA_BRAVE_API_KEY" ""); TAVILY=$(ask "TAVILY_API_KEY" ""); SERPER=
 say "B6. Health foundation"
 USER_NAME=$(ask "Your name (for the record)" "$ADMIN_USER")
 TZ_=$(ask "Timezone" "$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##' || echo America/New_York)")
+# The MyOwnHealth bridge is a SEPARATE repo (cloned per the runbook). Its WHOOP
+# secret + venv live there, not in this Odysseus repo.
+BRIDGE=$(ask "MyOwnHealth bridge repo path" "$HOME/myownhealth")
 
 # ───────────────────────────── WRITE ─────────────────────────────
 say "Writing config"
@@ -106,13 +109,17 @@ EOF
 chmod 600 .env; pass ".env (chmod 600)"
 
 if [ -n "$WHOOP_ID" ]; then
-  mkdir -p mcp
-  cat > mcp/.env <<EOF
+  if [ -d "$BRIDGE" ]; then
+    mkdir -p "$BRIDGE/mcp"
+    cat > "$BRIDGE/mcp/.env" <<EOF
 WHOOP_CLIENT_ID=${WHOOP_ID}
 WHOOP_CLIENT_SECRET=${WHOOP_SECRET}
 WHOOP_REDIRECT_URI=${WHOOP_REDIR}
 EOF
-  chmod 600 mcp/.env; pass "mcp/.env (chmod 600)"
+    chmod 600 "$BRIDGE/mcp/.env"; pass "$BRIDGE/mcp/.env (chmod 600)"
+  else
+    warn "bridge repo not found at $BRIDGE — clone it (see RUNBOOK §3), then put WHOOP keys in $BRIDGE/mcp/.env"
+  fi
 fi
 
 mkdir -p data
@@ -130,10 +137,11 @@ PY
 say "Next steps"
 cat <<EOF
   1. Bring up the stack:     docker compose up -d --build
-  2. Set up the bridge:      uv venv --python 3.12 mcp/.venv
+  2. Set up the bridge:      cd ${BRIDGE}
+                             uv venv --python 3.12 mcp/.venv
                              uv pip install --python mcp/.venv -r mcp/requirements.txt
-  3. Seed ledger + timers:   (charters/health.charter.yaml ships; install the launchd plists
-                             with this machine's paths — see docs/PROVISIONING.md §D)
+  3. Seed ledger + timers:   (charters/health.charter.yaml ships; genesis auto-seeds on first
+                             run; install the com.myownhealth.* launchd plists — see RUNBOOK §7)
   4. Open:                   http://localhost:${APP_PORT}  (log in as ${ADMIN_USER})
 $([ -z "$ADMIN_PASS" ] && echo '  NOTE: admin password was blank — the app generates a random one on first run and logs it.')
 EOF
