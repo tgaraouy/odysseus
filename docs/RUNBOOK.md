@@ -50,8 +50,11 @@ ollama pull nomic-embed-text
 # Odysseus — from your fork, the working branch:
 git clone -b setup/local-docker-browser-mcp \
   https://github.com/tgaraouy/odysseus.git ~/odysseus/odysseus
-# MyOwnHealth bridge (the bridge service builds its image from this repo):
-git clone https://github.com/tgaraouy/MyOwnHealth.git ~/myownhealth
+# MyOwnHealth bridge (the bridge service builds its image from this repo).
+# NOTE: the containerized bridge lives on the feature branch, NOT the default
+# branch — clone that branch explicitly or the bridge image won't build.
+git clone -b feature/odysseus-mcp-bridge \
+  https://github.com/tgaraouy/MyOwnHealth.git ~/myownhealth
 ```
 *(On Windows/Git Bash, `~` is your user folder, e.g. `C:\Users\you`. Keep both clones under it.)*
 
