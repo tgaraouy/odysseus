@@ -189,8 +189,77 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  # MyOwnHealth health bridge — the user's local health record exposed to the
+  # agent as MCP tools (FastMCP, Streamable HTTP at :8770) plus the 3 timers
+  # (projection / weekly-query / apollo) via supercronic. Containerizing it means
+  # ONE `docker compose up -d` runs the bridge on macOS OR Windows — no launchd,
+  # no systemd, no WSL Ubuntu. The bridge code is a SEPARATE repo (MyOwnHealth),
+  # so the build context is BRIDGE_REPO (set by scripts/provision.sh).
+  #
+  # OFF by default (profile "bridge"). Enable per-install with COMPOSE_PROFILES=
+  # bridge in .env. The live Mac runs the bridge under launchd, so it leaves this
+  # profile UNSET and `docker compose up -d` ignores this service entirely —
+  # nothing here can collide with the launchd bridge on :8770.
+  #
+  # Runs as root (image default): first-party code that must write the shared
+  # ledger + the generated /health,/ledger HTML into the app's data volume and
+  # the gold tier in ChromaDB. Unlike the `sandbox` service it is NOT isolated —
+  # it is the trusted health backend, not an untrusted-code runner.
+  bridge:
+    profiles: ["bridge"]
+    build:
+      context: ${BRIDGE_REPO:-../../myownhealth}
+      dockerfile: mcp/Dockerfile
+    extra_hosts:
+      # Reach the host's Ollama (on-demand FTE-analysis tools) the same way the
+      # app does, on both Docker Desktops.
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Listen on all interfaces INSIDE the container; the port is NOT published
+      # to the host, so the bridge stays reachable only on the compose network
+      # (off the LAN, preserving the host-bridge posture). The app connects to
+      # http://bridge:8770/mcp, so allowlist that Host for the bridge's
+      # DNS-rebinding protection.
+      - HEALTH_MCP_HOST=0.0.0.0
+      - HEALTH_MCP_PORT=8770
+      - HEALTH_MCP_ALLOWED_HOSTS=bridge:8770
+      # Shared gold tier — the SAME ChromaDB the app uses (compose-network DNS).
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      # apollo reminders -> the ntfy service on the compose network.
+      - NTFY_URL=http://ntfy:80
+      - NTFY_TOPIC=${NTFY_TOPIC:-Reminders}
+      - BRIDGE_OLLAMA_URL=${BRIDGE_OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_URL=${BRIDGE_OLLAMA_URL:-http://host.docker.internal:11434}
+      # Ledger + the generated /health and /ledger pages live in the app's data
+      # volume (mounted at /odyssey-data below) so the app serves them as-is.
+      - LEDGER_DB=/odyssey-data/ledger/health.ledger.db
+      - HEALTH_HUB_OUT=/odyssey-data/health-hub.html
+      - LEDGER_VIEW_OUT=/odyssey-data/health-ledger.html
+      # MyOwnHealth's own record + WHOOP tokens + the fastembed model cache
+      # persist on a named volume (survive container rebuilds).
+      - MYOWNHEALTH_DB=/app/data/user/longevity_os.db
+      - WHOOP_TOKENS=/app/data/user/.whoop_tokens.json
+      - HF_HOME=/app/data/user/.cache/hf
+      - FASTEMBED_CACHE_PATH=/app/data/user/.cache/fastembed
+      # WHOOP app credentials (optional). Written to .env by provision.sh when
+      # configured; blank otherwise (the bridge runs fine without wearable sync).
+      - WHOOP_CLIENT_ID=${WHOOP_CLIENT_ID:-}
+      - WHOOP_CLIENT_SECRET=${WHOOP_CLIENT_SECRET:-}
+      - WHOOP_REDIRECT_URI=${WHOOP_REDIRECT_URI:-http://localhost:${APP_PORT:-7000}/whoop/callback}
+    volumes:
+      - ./data:/odyssey-data:z
+      - myownhealth-data:/app/data/user
+    depends_on:
+      chromadb:
+        condition: service_started
+      ntfy:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
   sandbox-ipc:
+  myownhealth-data:

@@ -31,15 +31,24 @@ but running the renamed code fine) + **Tailscale serve** → `https://tawfiks-ma
   journal**, **03 Vision & mindset** (+ trend readout), 04 Protocol, 05 Labs, 06 Record, 07 Care
   prep, **08 Nutrition framework** (holistic, flexible — replaced the rigid weekly plan).
   Docs: `docs/gout-lowcarb-protocol.md`, `docs/nutrition-framework.md`, `docs/mindset-review.md`.
-- **Provisioning kit** (for new laptops): `docs/RUNBOOK.md` (macOS + Windows/WSL2),
-  `docs/PROVISIONING.md` (infra + foundation data), `docs/user-spec.md` (the intent→outcomes→data
-  discovery scaffold), `scripts/provision.sh` (preflight + collect, bridge-repo-aware).
+- **Provisioning kit** (for new laptops): **one cross-platform path** — the MyOwnHealth bridge is
+  now a **container** (`MyOwnHealth/mcp/Dockerfile` + supercronic timers), added to Odysseus
+  `docker-compose.yml` as the profile-gated `bridge` service. So macOS **and** Windows install with
+  the same `docker compose up -d` — no launchd/systemd/WSL/Ubuntu. (Windows: run from Git Bash.)
+  `docs/RUNBOOK.md` (unified), `docs/PROVISIONING.md`, `docs/user-spec.md` (discovery scaffold),
+  `scripts/provision.sh` (writes `COMPOSE_PROFILES=bridge` + `BRIDGE_REPO` + WHOOP into `.env`),
+  `scripts/seed_bridge_mcp.py` (registers the bridge MCP server at `http://bridge:8770/mcp`).
+  The live Mac keeps its **legacy launchd** host bridge (profile unset → no container clash).
 - **Rebrand:** ToufHealth → **MyOwnHealth** across that repo + pushed to its remote (marketing
   "Touf" in `docs/market/` intentionally kept).
 
 ## What's open / next (prioritized)
-1. **Mini-PC install (Windows).** Follow `docs/RUNBOOK.md` → WSL2 section. **Untested piece:**
-   the MyOwnHealth bridge as a systemd service *inside* WSL2 (no launchd there) — expect to iterate.
+1. **Mini-PC install (Windows).** Follow `docs/RUNBOOK.md` (now a single path). Run from **Git
+   Bash**; `docker compose up -d --build` brings up the **containerized bridge** too. **Untested
+   piece:** the bridge *container* hasn't been run end-to-end yet (the image builds; the live Mac
+   stays on launchd so we didn't `up` it there) — first real boot is on the mini PC. Watch:
+   `docker compose logs bridge` (genesis seed, first projection writing `/odyssey-data/health-hub.html`),
+   then `seed_bridge_mcp.py` + `tools via http` in the odysseus logs.
 2. **Discovery phase** = the actual point. Run the `docs/user-spec.md` intake with the user (he is
    first user **and FDE**): §1 Intent + §2 Outcomes first (they drive everything), §3 Data
    sequenced easy×impact, §4 Context, §5 cross-cutting boundaries → §6 mandate → configures the

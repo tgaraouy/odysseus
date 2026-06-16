@@ -4,8 +4,11 @@ Everything a fresh machine needs to run a per-user, data-owned health agent. Two
 **(A) pre-install infrastructure** that must already exist, and **(B) foundation data** the
 installer asks each user for. `scripts/provision.sh` checks A and collects B.
 
-> Target: **macOS** (Apple Silicon or Intel). The bridge runtime uses macOS `launchd` timers.
-> Linux is possible but the timer/service layer differs — out of scope for v1.
+> Target: **macOS or Windows**. Docker is the common layer and the **MyOwnHealth bridge runs as a
+> container** (its timers via supercronic), so there's no `launchd`/`systemd`/WSL dependency — the
+> same `docker compose up -d` brings up everything on both. On Windows, run the steps from **Git
+> Bash** (ships with Git); Docker Desktop's WSL2 backend runs the Linux containers invisibly.
+> *(The original Mac still runs a legacy host bridge under launchd; see `docs/RUNBOOK.md`.)*
 
 ---
 
@@ -13,13 +16,12 @@ installer asks each user for. `scripts/provision.sh` checks A and collects B.
 
 | Component | Why it's needed | Required? | Get it |
 |---|---|---|---|
-| **macOS** | host OS; `launchd` timers run the bridge/projection | required | — |
-| **Docker Desktop** (running) | runs the stack: `odysseus`, `chromadb`, `searxng`, `ntfy`, `sandbox` | **required** | docker.com |
+| **macOS or Windows** | host OS; Docker Desktop runs the whole stack (incl. the bridge) | required | — |
+| **Docker Desktop** (running) | runs the stack: `odysseus`, `chromadb`, `searxng`, `ntfy`, `sandbox`, `bridge` | **required** | docker.com |
 | **Ollama** (native on host, running) | local LLMs — chat, vision, embeddings | **required** | ollama.com |
 | └ **Ollama models pulled** | `gemma4` (chat), `llama3.2-vision:11b` (vision), an embedding model (`nomic-embed-text`) | **required** | `ollama pull <model>` |
-| **Python 3.12** | MyOwnHealth bridge runtime | required *(health features)* | python.org |
-| **uv** | builds the bridge venv (`mcp/.venv`) | required *(health features)* | astral.sh/uv |
-| **Git** | clone the repos | required | — |
+| **Git** | clone the repos; on Windows also provides **Git Bash** (the terminal to use) | **required** | git-scm.com |
+| **Python 3.12 + uv** | only for the **legacy host bridge** — the containerized bridge has its own Python | legacy only | astral.sh/uv |
 | **Disk ≥ ~25 GB free** | Docker images + Ollama models + fastembed cache | required | — |
 | **RAM ≥ 16 GB** | Docker + local LLM inference | recommended | — |
 | **Tailscale** | secure remote access (tailnet, not public) | optional | tailscale.com |
@@ -49,8 +51,9 @@ install these for you (they need your admin consent / accounts).
   `ALLOWED_ORIGINS`. `SEARXNG_SECRET` is auto-generated.
 
 ### B4 — Health wearable: WHOOP *(optional)*
-- `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_REDIRECT_URI` → written to **`mcp/.env`**
-  (chmod 600). Skip to run without wearable sync.
+- `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_REDIRECT_URI` → written to the Odysseus
+  **`.env`** (chmod 600); compose passes them into the bridge container. Skip to run without
+  wearable sync. *(Legacy host bridge reads them from `<bridge>/mcp/.env` instead.)*
 
 ### B5 — Search & other providers *(optional)*
 - Web search: `DATA_BRAVE_API_KEY`, `GOOGLE_API_KEY` + `GOOGLE_PSE_CX`, `TAVILY_API_KEY`,
@@ -65,8 +68,10 @@ install these for you (they need your admin consent / accounts).
 - **User's name** and **timezone** — for the record + scheduling.
 
 ### B7 — Paths *(auto-derived)*
-- The new machine's home path is substituted into the `launchd` plists and `LEDGER_DB`
-  (`<repo>/data/ledger/health.ledger.db`). No hardcoded `/Users/tgaraouy/...`.
+- `BRIDGE_REPO` (the cloned MyOwnHealth path) is recorded in `.env` as the bridge's Docker build
+  context. Inside the container the ledger, generated HTML, and user DB use fixed container paths
+  (`/odyssey-data/...`, `/app/data/user/...`) mapped to volumes — no hardcoded host paths, no
+  per-machine plist templating.
 
 ### B8 — Email *(optional)*
 IMAP/SMTP host, port, username, app-password. Stored encrypted in-app (`src/secret_storage.py`),
@@ -85,18 +90,21 @@ big fork — see §E and `docs/user-spec.md`.*
 ---
 
 ## C. Created on first run (generated, not asked)
-`.env` (chmod 600) · `mcp/.env` (chmod 600) · `data/auth.json` (admin) · `data/settings.json`
-(models) · `data/.app_key` (secret storage) · the **ledger genesis** from the charter · the
-bridge venv (`mcp/.venv`) · the four `launchd` timers (path-substituted) · `SEARXNG_SECRET`.
+`.env` (chmod 600, incl. `COMPOSE_PROFILES=bridge` + `BRIDGE_REPO` + WHOOP keys) · `data/auth.json`
+(admin) · `data/settings.json` (models) · `data/.app_key` (secret storage) · the **ledger genesis**
+from the charter (auto-seeded on the bridge's first run) · `SEARXNG_SECRET` · the `myownhealth-data`
+volume (the user's record + WHOOP tokens + fastembed cache). No venv, no launchd plists — the
+bridge's Python and timers (supercronic) live inside its container.
 
 ## D. Install order (what provision.sh / the operator runs)
-1. **Preflight** — `scripts/provision.sh` checks section A, collects section B → writes `.env`,
-   `mcp/.env`, `data/settings.json`.
-2. **Bring up the stack** — `docker compose up -d --build`.
-3. **Bridge** — `uv venv --python 3.12 mcp/.venv && uv pip install -r mcp/requirements.txt`,
-   seed the ledger genesis, install the `launchd` timers.
+1. **Preflight** — `scripts/provision.sh` checks section A, collects section B → writes `.env`
+   (with `COMPOSE_PROFILES=bridge`, `BRIDGE_REPO`, WHOOP) + `data/settings.json`.
+2. **Bring up everything** — `docker compose up -d --build` (app **and** bridge; genesis auto-seeds;
+   supercronic runs the timers in-container).
+3. **Register bridge tools** — `docker compose exec odysseus python scripts/seed_bridge_mcp.py`,
+   then `docker compose restart odysseus`.
 4. **Verify** — app reachable on `APP_PORT`; `/health` and `/ledger` render; bridge MCP connects
-   (24 tools); WHOOP OAuth (if configured).
+   (`tools via http`); WHOOP OAuth (if configured).
 
 ## E. Open questions for the product (not blocking v1)
 - One-command bundle (a `.pkg` / signed installer) vs the script flow.

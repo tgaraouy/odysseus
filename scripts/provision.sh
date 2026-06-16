@@ -18,8 +18,14 @@ PREFLIGHT_OK=1
 
 # ───────────────────────────── A. PREFLIGHT ─────────────────────────────
 say "A. Pre-install infrastructure"
-[ "$(uname)" = Darwin ] && pass "macOS ($(sw_vers -productVersion 2>/dev/null))" \
-  || miss "not macOS" "v1 targets macOS"
+# Docker is the common layer on every target. Run this on macOS (Terminal) or
+# Windows (Git Bash — ships with the `git` prereq, so no WSL/Ubuntu needed).
+case "$(uname -s)" in
+  Darwin)               HOST_OS=mac;     pass "macOS ($(sw_vers -productVersion 2>/dev/null))";;
+  Linux)                HOST_OS=linux;   pass "Linux ($(uname -r))";;
+  MINGW*|MSYS*|CYGWIN*) HOST_OS=windows; pass "Windows ($(uname -s) — Git Bash)";;
+  *)                    HOST_OS=other;   warn "unrecognized OS $(uname -s) — proceeding (Docker is the common layer)";;
+esac
 
 if docker info >/dev/null 2>&1; then pass "Docker Desktop running"
   else miss "Docker not running" "install/start Docker Desktop (docker.com)"; fi
@@ -43,10 +49,16 @@ fi
 [ "$HAVE_UV" = 1 ] && pass "uv" || miss "uv not found" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 command -v git >/dev/null 2>&1 && pass "git" || miss "git not found" "install git"
 
-free_gb="$(df -g "$REPO" 2>/dev/null | awk 'NR==2{print $4}')"
-[ "${free_gb:-0}" -ge 25 ] 2>/dev/null && pass "disk: ${free_gb}GB free" || warn "disk low (${free_gb:-?}GB) — need ~25GB"
-ram_gb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
-[ "$ram_gb" -ge 16 ] && pass "RAM: ${ram_gb}GB" || warn "RAM ${ram_gb}GB (16GB+ recommended)"
+# Disk + RAM are best-effort (the probes differ per OS; never block on them).
+if [ "$HOST_OS" = mac ]; then
+  free_gb="$(df -g "$REPO" 2>/dev/null | awk 'NR==2{print $4}')"
+  ram_gb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
+else
+  free_gb="$(df -BG "$REPO" 2>/dev/null | awk 'NR==2{gsub(/[A-Za-z]/,"",$4); print $4}')"
+  ram_gb=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0) / 1048576 ))
+fi
+[ "${free_gb:-0}" -ge 25 ] 2>/dev/null && pass "disk: ${free_gb}GB free" || warn "disk low/unknown (${free_gb:-?}GB) — need ~25GB"
+[ "${ram_gb:-0}" -ge 16 ] 2>/dev/null && pass "RAM: ${ram_gb}GB" || warn "RAM ${ram_gb:-?}GB (16GB+ recommended)"
 
 if [ "$PREFLIGHT_OK" -ne 1 ]; then
   printf '\n\033[31mPreflight has MISSING items.\033[0m Resolve them, then re-run.\n'
@@ -105,21 +117,29 @@ DATA_BRAVE_API_KEY=${BRAVE}
 TAVILY_API_KEY=${TAVILY}
 SERPER_API_KEY=${SERPER}
 SANDBOX_FALLBACK_LOCAL=false
-EOF
-chmod 600 .env; pass ".env (chmod 600)"
-
-if [ -n "$WHOOP_ID" ]; then
-  if [ -d "$BRIDGE" ]; then
-    mkdir -p "$BRIDGE/mcp"
-    cat > "$BRIDGE/mcp/.env" <<EOF
+# Containerized MyOwnHealth bridge — \`docker compose up -d\` runs it too, so
+# there's no launchd/systemd/WSL. COMPOSE_PROFILES turns the service on; the
+# build context is the cloned bridge repo. WHOOP keys live here (compose passes
+# them to the bridge container) — no separate mcp/.env needed.
+COMPOSE_PROFILES=bridge
+BRIDGE_REPO=${BRIDGE}
+BRIDGE_OLLAMA_URL=http://host.docker.internal:11434
+HEALTH_MCP_URL=http://bridge:8770/mcp
+NTFY_TOPIC=Reminders
 WHOOP_CLIENT_ID=${WHOOP_ID}
 WHOOP_CLIENT_SECRET=${WHOOP_SECRET}
 WHOOP_REDIRECT_URI=${WHOOP_REDIR}
 EOF
-    chmod 600 "$BRIDGE/mcp/.env"; pass "$BRIDGE/mcp/.env (chmod 600)"
-  else
-    warn "bridge repo not found at $BRIDGE — clone it (see RUNBOOK §3), then put WHOOP keys in $BRIDGE/mcp/.env"
-  fi
+chmod 600 .env; pass ".env (chmod 600)"
+
+# The bridge repo is the Docker BUILD CONTEXT for the bridge service, so it must
+# exist before `docker compose up -d --build`.
+if [ -d "$BRIDGE" ]; then
+  pass "bridge repo present ($BRIDGE)"
+else
+  warn "bridge repo not found at $BRIDGE — clone it before bringing up the stack:
+          git clone https://github.com/tgaraouy/MyOwnHealth.git \"$BRIDGE\"
+        (the bridge service builds from there; see RUNBOOK §3)"
 fi
 
 mkdir -p data
@@ -136,12 +156,13 @@ PY
 # ───────────────────────────── NEXT STEPS ─────────────────────────────
 say "Next steps"
 cat <<EOF
-  1. Bring up the stack:     docker compose up -d --build
-  2. Set up the bridge:      cd ${BRIDGE}
-                             uv venv --python 3.12 mcp/.venv
-                             uv pip install --python mcp/.venv -r mcp/requirements.txt
-  3. Seed ledger + timers:   (charters/health.charter.yaml ships; genesis auto-seeds on first
-                             run; install the com.myownhealth.* launchd plists — see RUNBOOK §7)
-  4. Open:                   http://localhost:${APP_PORT}  (log in as ${ADMIN_USER})
+  1. Bring up everything (app + bridge):  docker compose up -d --build
+                                          (the bridge builds from ${BRIDGE}; genesis auto-seeds,
+                                          and supercronic runs the projection/weekly/apollo timers
+                                          inside the container — no launchd/systemd)
+  2. Register the bridge tools (once):    docker compose exec odysseus \\
+                                            python scripts/seed_bridge_mcp.py
+  3. Open:                                http://localhost:${APP_PORT}  (log in as ${ADMIN_USER})
+  4. /health and /ledger populate after the bridge's first projection (~1 min).
 $([ -z "$ADMIN_PASS" ] && echo '  NOTE: admin password was blank — the app generates a random one on first run and logs it.')
 EOF

@@ -4,9 +4,18 @@ Every step, in order, to take a bare machine to a running shell ready for the di
 Copy-paste friendly. Pairs with `docs/PROVISIONING.md` (what/why) and `docs/user-spec.md` (the
 discovery itself).
 
-> **Assumes macOS** (Mac mini or similar), admin access, ~25 GB free, internet.
-> **Windows mini PC?** See the Windows section at the bottom — run it under **WSL2**, then this
-> runbook applies almost verbatim. **Linux?** Same, with `systemd` instead of step 7's launchd.
+> **One path for macOS and Windows.** Docker is the common layer; the whole stack — including the
+> **MyOwnHealth health bridge** — runs as containers, so the same `docker compose up -d` works on
+> both. No launchd, no systemd, **no WSL/Ubuntu**. The only per-OS difference is which terminal you
+> type into and that Ollama runs natively on the host.
+>
+> - **macOS:** use **Terminal**.
+> - **Windows:** use **Git Bash** (it ships with Git, a prerequisite below) — *not* PowerShell, so
+>   the bash commands below run verbatim. Docker Desktop's own WSL2 backend runs the Linux
+>   containers invisibly; you never open Ubuntu.
+>
+> *(The live Mac that built this still runs the bridge under launchd — that's a legacy mode, not
+> what new installs do. See "Legacy: host bridge" at the bottom.)*
 
 ---
 
@@ -14,16 +23,19 @@ discovery itself).
 - An **admin username + password** you'll choose.
 - *(optional)* WHOOP `client_id` / `client_secret`, any **search API keys** (Brave/Tavily/Serper).
 
-## 1 · Install prerequisites
+## 1 · Install prerequisites (on the host)
+Install these on the host OS (Windows or macOS), then verify from your terminal:
+- **Docker Desktop** — docker.com. On **Windows**, accept the WSL2 backend it sets up (that's just
+  Docker's engine — you won't use Ubuntu directly).
+- **Ollama** — ollama.com (runs natively on the host: Ollama for Windows or for macOS).
+- **Git** — git-scm.com. On Windows this also gives you **Git Bash**, the terminal you'll use.
+- **uv** is **not** needed for new installs — the bridge's Python lives in its container.
+- *(optional)* **Tailscale** — tailscale.com, for remote access during discovery.
+
 ```bash
-# Docker Desktop — download from docker.com, launch it, then verify:
 docker info >/dev/null && echo "docker OK"
-# Ollama — download from ollama.com, launch it, then verify:
 curl -fsS http://localhost:11434/api/tags >/dev/null && echo "ollama OK"
-# uv (Python 3.12 manager):
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# git + Tailscale: install Tailscale from tailscale.com; git via:
-xcode-select --install 2>/dev/null || true
+git --version
 ```
 
 ## 2 · Pull the local models
@@ -36,62 +48,57 @@ ollama pull nomic-embed-text
 ## 3 · Get the code
 ```bash
 # Odysseus — from your fork, the working branch:
-mkdir -p ~/odysseus && git clone -b setup/local-docker-browser-mcp \
+git clone -b setup/local-docker-browser-mcp \
   https://github.com/tgaraouy/odysseus.git ~/odysseus/odysseus
-# MyOwnHealth bridge:
+# MyOwnHealth bridge (the bridge service builds its image from this repo):
 git clone https://github.com/tgaraouy/MyOwnHealth.git ~/myownhealth
 ```
+*(On Windows/Git Bash, `~` is your user folder, e.g. `C:\Users\you`. Keep both clones under it.)*
 
 ## 4 · Provision (preflight + foundation data)
 ```bash
 cd ~/odysseus/odysseus
-bash scripts/provision.sh     # checks infra, asks for admin/keys/models → writes .env, mcp/.env, settings.json
+bash scripts/provision.sh    # checks infra, asks admin/keys/models, asks the bridge repo path
+                             # → writes .env (incl. COMPOSE_PROFILES=bridge + BRIDGE_REPO), settings.json
 ```
 
-## 5 · Bring up the stack
+## 5 · Bring up the whole stack (app + bridge)
 ```bash
 docker compose up -d --build
-docker compose ps            # all Up; 'sandbox' Up (not Restarting)
+docker compose ps            # all Up; 'bridge' Up and 'sandbox' Up (not Restarting)
 ```
+`COMPOSE_PROFILES=bridge` in `.env` (written by provision) is what includes the bridge service.
+The bridge image builds from `BRIDGE_REPO`; its **genesis auto-seeds** from
+`mcp/charters/health.charter.yaml`, and **supercronic** runs the projection (10 min), weekly-query
+(daily), and apollo (monthly) timers inside the container — the launchd/systemd replacement.
 
-## 6 · Set up the MyOwnHealth bridge
+## 6 · Register the bridge tools (once)
+Point the agent at the bridge's MCP endpoint (`http://bridge:8770/mcp` on the compose network):
 ```bash
-cd ~/myownhealth
-uv venv --python 3.12 mcp/.venv
-uv pip install --python mcp/.venv -r mcp/requirements.txt
-# The ledger GENESIS auto-seeds from charters/health.charter.yaml on the bridge's first run — no manual seed.
+docker compose exec odysseus python scripts/seed_bridge_mcp.py
+docker compose restart odysseus     # reconnect to pick up the bridge tools
 ```
+*(Or add it in the UI: Settings → MCP → add an HTTP server `http://bridge:8770/mcp`.)*
 
-## 7 · Install the bridge services (launchd timers — macOS)
-The 4 plists carry absolute paths; template them to THIS machine, then load:
-```bash
-cd ~/myownhealth
-for p in com.myownhealth.mcp com.myownhealth.projection com.myownhealth.weeklyquery com.myownhealth.apollo; do
-  sed "s#/Users/tgaraouy/projects/health-experiment-studio#$HOME/myownhealth#g; \
-       s#/Users/tgaraouy/odysseus/odysseus#$HOME/odysseus/odysseus#g" \
-       "mcp/$p.plist" > "$HOME/Library/LaunchAgents/$p.plist"
-  launchctl load -w "$HOME/Library/LaunchAgents/$p.plist"
-done
-launchctl list | grep myownhealth      # all four listed
-```
-*(If you put the repos elsewhere, adjust the two source paths in the `sed`.)*
-
-## 8 · Tailscale (remote access for discovery)
+## 7 · Tailscale (remote access for discovery) — optional
 ```bash
 tailscale up                 # log in
 tailscale serve --bg 7000    # serve the app over HTTPS on your tailnet
 tailscale serve status       # shows your https://<machine>.<tailnet>.ts.net URL (tailnet-only)
 ```
+*(On Windows, run Tailscale on the host; point `tailscale serve` at the app's `127.0.0.1:7000`.)*
 
-## 9 · Verify
+## 8 · Verify
 ```bash
-docker compose logs odysseus | grep -iE "MyOwnHealth|24 tools" | tail -1   # expect: "... 24 tools via http"
+docker compose logs odysseus | grep -iE "MyOwnHealth|tools via http" | tail -1   # bridge tools connected
+docker compose logs bridge   | tail -20                                          # daemon + projection ran
 ```
 - Open `http://localhost:7000` (or the Tailscale URL) → log in as your admin user.
-- `/health` and `/ledger` render. *(With `SECURE_COOKIES=true`, use HTTPS/Tailscale or localhost.)*
+- `/health` and `/ledger` render (they populate after the first projection, ~1 min).
+  *(With `SECURE_COOKIES=true`, use HTTPS/Tailscale or localhost.)*
 - WHOOP (if configured): visit `/whoop/callback` to finish OAuth.
 
-## 10 · Discovery phase (the actual point)
+## 9 · Discovery phase (the actual point)
 This shell is now the **holder**. Run the intake from `docs/user-spec.md`:
 1. **§1 Intent + §2 Outcomes** first — they drive everything.
 2. **§3 Data** — sequence by *easy × impact*; bring in the high-impact/low-friction sources first.
@@ -101,36 +108,29 @@ This shell is now the **holder**. Run the intake from `docs/user-spec.md`:
 
 ---
 
----
+## How the bridge runs in a container (reference)
+- **Image:** `MyOwnHealth/mcp/Dockerfile` (python:3.12-slim). Installs the pinned bridge deps plus
+  `chromadb-client==1.5.9` + `fastembed==0.8.0` (matched to the ChromaDB server digest Odysseus
+  pins), and **supercronic** for the timers.
+- **Process model:** `mcp/docker-entrypoint.sh` runs one projection on startup (so `/health` exists
+  promptly), starts supercronic for the 3 timers, and execs the FastMCP daemon as the main process.
+- **Wiring (compose `bridge` service):** ledger + generated `/health`,`/ledger` HTML live in the
+  app's `./data` volume (mounted at `/odyssey-data`); the user's record + WHOOP tokens persist on
+  the `myownhealth-data` named volume; gold tier → the shared `chromadb` service; reminders → the
+  `ntfy` service; on-demand LLM tools → host Ollama via `host.docker.internal`.
+- **Port :8770 is not published** — the bridge is reachable only on the compose network, never the
+  LAN (preserves the original host-bridge security posture).
 
-## Windows mini PC — run it under WSL2 (recommended)
-Native Windows has a no-Docker launcher (`launch-windows.ps1`) but it **skips the sandbox /
-chromadb / searxng services** — degraded and unhardened. For a faithful install, use **WSL2**
-(a real Linux env), then steps 1–10 above apply almost verbatim from inside Ubuntu.
+## Legacy: host bridge (the original live Mac)
+The first Mac runs the bridge as a **host** process under **launchd** (`com.myownhealth.*` plists),
+reaching the app via `host.docker.internal:8770`. New installs do **not** do this — they use the
+container above. To keep a host bridge, leave `COMPOSE_PROFILES` unset, set up the venv
+(`uv venv --python 3.12 mcp/.venv && uv pip install -r mcp/requirements.txt`), install the plists,
+and register the MCP server at `http://host.docker.internal:8770/mcp`.
 
-```powershell
-# In Windows PowerShell (admin), once:
-wsl --install -d Ubuntu       # installs WSL2 + Ubuntu; reboot if prompted
-```
-Then **install on the Windows host (not inside WSL):**
-- **Docker Desktop for Windows** → Settings → Resources → WSL integration → enable for Ubuntu.
-- **Ollama for Windows** (runs on the Windows host; `ollama pull` the 3 models from step 2).
-- **Tailscale for Windows.**
-
-Now open **Ubuntu (WSL2)** and run the runbook there:
-- Steps 1 (uv, git only — Docker/Ollama already on the host), 2 (models already pulled), 3–6
-  work as written. Ollama is reachable from containers via `host.docker.internal:11434` (same as
-  Mac) and from WSL shell via `localhost:11434` (WSL2 forwards localhost to Windows).
-- **Step 7 (services):** no launchd. Enable systemd in WSL2 (`/etc/wsl.conf` → `[boot]
-  systemd=true`, then `wsl --shutdown` and reopen), and run the bridge + timers as **systemd
-  user services / timers** (translate the 4 launchd plists). *Untested by us — flag if it fights.*
-- **Step 8 (Tailscale):** `tailscale serve` from the Windows host pointing at the WSL2 app port.
-
-> **Honest:** the Docker stack on WSL2 is well-trodden; the **bridge-as-a-systemd-service inside
-> WSL2** is the one piece we haven't run. Expect to iterate there. Paths become
-> `/home/<you>/...` (Linux), not `/Users/...`.
-
-## Honest gaps to close (so this is a clean kit)
-1. **provision.sh doesn't auto-template/install the plists** (step 7 is manual) — fold it in.
-2. **macOS only** for step 7 — add the Linux/systemd path if the mini PC isn't a Mac.
+## Honest gaps to close
+1. **provision.sh** doesn't auto-template/install the launchd plists for the legacy host-bridge mode
+   (that mode is manual). The containerized path needs none of that.
+2. **The bridge container runs as root** (first-party trusted backend that must write the shared
+   data volume). A future pass can drop it to PUID/PGID with an entrypoint chown of the named volume.
 3. **Charter/protocol are shared defaults** — per-user protocol still starts empty (by design).
