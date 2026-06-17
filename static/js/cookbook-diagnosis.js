@@ -174,7 +174,7 @@ export const ERROR_PATTERNS = [
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('vllm') },
       {
         label: 'Copy upgrade hint',
-        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume Touf owns PATH/system/source/Docker installs.'),
+        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume MyOwnHealth owns PATH/system/source/Docker installs.'),
       },
     ],
   },
@@ -564,7 +564,7 @@ export function _diagnose(text) {
 }
 
 function _diagnosisCopyBundle(task, diagnosis, sourceText, suggestionText) {
-  const lines = ['## Touf Cookbook troubleshooting'];
+  const lines = ['## MyOwnHealth Cookbook troubleshooting'];
   if (task) {
     lines.push(
       '',

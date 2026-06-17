@@ -1,6 +1,6 @@
 {
-  "name": "Touf",
-  "short_name": "Touf",
+  "name": "MyOwnHealth",
+  "short_name": "MyOwnHealth",
   "description": "Self-hosted AI chat with memory, documents, and tools",
   "start_url": "/",
   "scope": "/",
