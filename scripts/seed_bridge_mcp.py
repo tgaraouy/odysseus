@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.database import McpServer, SessionLocal  # noqa: E402
 
 SERVER_ID = os.getenv("HEALTH_MCP_ID", "myownhealth")
-SERVER_NAME = os.getenv("HEALTH_MCP_NAME", "MyOwnHealth")
+SERVER_NAME = os.getenv("HEALTH_MCP_NAME", "Helm Health")
 SERVER_URL = os.getenv("HEALTH_MCP_URL", "http://bridge:8770/mcp")
 
 
@@ -46,7 +46,7 @@ def main() -> int:
         db.commit()
     finally:
         db.close()
-    print(f"MyOwnHealth bridge MCP server {action}: id={SERVER_ID} -> {SERVER_URL}")
+    print(f"Helm Health bridge MCP server {action}: id={SERVER_ID} -> {SERVER_URL}")
     print("Restart the app (or reconnect in Settings -> MCP) to connect.")
     return 0
 
