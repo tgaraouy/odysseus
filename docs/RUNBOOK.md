@@ -84,12 +84,32 @@ docker compose restart odysseus     # reconnect to pick up the bridge tools
 *(Or add it in the UI: Settings → MCP → add an HTTP server `http://bridge:8770/mcp`.)*
 
 ## 7 · Tailscale (remote access for discovery) — optional
+**Prerequisites on a NEW tailnet (one-time, in the admin console).** `tailscale serve`
+needs an HTTPS cert, and both that and Serve are off by default on a fresh account — so the
+commands below fail with *"account does not support getting TLS certs"* / *"Serve is not enabled"*
+until you enable them at https://login.tailscale.com/admin/dns :
+1. **MagicDNS** — enable it first (HTTPS depends on it).
+2. **HTTPS Certificates** — enable it (the card then shows your `<tailnet>.ts.net` domain).
+3. **Serve** — enable it (the CLI prints a one-click `login.tailscale.com/f/serve?node=…` link).
+
+Verify HTTPS is live before serving: `tailscale cert <machine>.<tailnet>.ts.net` should
+write a `.crt`/`.key` (delete them — they're just the check), not return a 500.
+
 ```bash
-tailscale up                 # log in
-tailscale serve --bg 7000    # serve the app over HTTPS on your tailnet
-tailscale serve status       # shows your https://<machine>.<tailnet>.ts.net URL (tailnet-only)
+tailscale up                              # log in
+tailscale serve --bg --https=443 127.0.0.1:7000   # serve the app over HTTPS on your tailnet
+tailscale serve status                    # shows your https://<machine>.<tailnet>.ts.net URL (tailnet-only)
 ```
 *(On Windows, run Tailscale on the host; point `tailscale serve` at the app's `127.0.0.1:7000`.)*
+
+**Then allow the tailnet origin.** The app's `ALLOWED_ORIGINS` defaults to localhost only, so
+logging in over the tailnet URL is rejected until you add it. Edit `.env` and recreate the app:
+```bash
+# .env — include the tailnet URL alongside the localhost defaults:
+ALLOWED_ORIGINS=http://localhost,http://127.0.0.1,https://<machine>.<tailnet>.ts.net
+docker compose up -d odysseus             # recreate so the new env takes effect (restart won't)
+```
+`tailscale serve` persists across reboots; turn it off with `tailscale serve --https=443 off`.
 
 ## 8 · Verify
 ```bash
