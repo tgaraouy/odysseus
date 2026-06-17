@@ -1,6 +1,6 @@
 {
-  "name": "MyOwnHealth",
-  "short_name": "MyOwnHealth",
+  "name": "Helm",
+  "short_name": "Helm",
   "description": "Self-hosted AI chat with memory, documents, and tools",
   "start_url": "/",
   "scope": "/",
