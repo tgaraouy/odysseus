@@ -30,6 +30,32 @@ def create_directories():
     for directory in (DATA_DIR, PERSONAL_DIR, RUNBOOK_DIR, UPLOAD_DIR):
         os.makedirs(directory, exist_ok=True)
         
+def seed_default_library():
+    """Copy shipped default Library docs (defaults/library/) into PERSONAL_DIR on first
+    run. Idempotent and non-destructive: only fills in files that aren't already present,
+    so user edits are never clobbered. Ships the Discovery method + spec template so a
+    fresh install's Library has them out of the box."""
+    import shutil
+    src_root = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "defaults", "library"
+    )
+    if not os.path.isdir(src_root):
+        return
+    for root, _, names in os.walk(src_root):
+        rel = os.path.relpath(root, src_root)
+        dst_dir = PERSONAL_DIR if rel == "." else os.path.join(PERSONAL_DIR, rel)
+        os.makedirs(dst_dir, exist_ok=True)
+        for name in names:
+            dst = os.path.join(dst_dir, name)
+            if os.path.exists(dst):
+                continue
+            try:
+                shutil.copy2(os.path.join(root, name), dst)
+                logger.info(f"Seeded default Library doc: {os.path.join(rel, name)}")
+            except Exception as e:
+                logger.error(f"Failed to seed default doc {name}: {e}")
+
+
 def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     """
     Initialize all manager and handler instances.
@@ -40,8 +66,9 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     Returns:
         Dictionary containing all initialized components
     """
-    # Create directories first
+    # Create directories first, then seed shipped default Library docs (idempotent)
     create_directories()
+    seed_default_library()
 
     # Initialize core managers
     memory_manager = MemoryManager(DATA_DIR)
