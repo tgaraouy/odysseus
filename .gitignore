@@ -91,3 +91,7 @@ compound.config.json
 *.error.log
 _scratch/
 masaic-ddor open.mp4
+
+# Sandbox stack host data/logs (isolated from prod ./data)
+data-sbx/
+logs-sbx/

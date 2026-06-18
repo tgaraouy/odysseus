@@ -40,3 +40,7 @@ timetree*.png
 *_signin_page.png
 *_calendar_view.png
 .gitignore
+
+# Sandbox stack host dirs (never part of the build context)
+data-sbx/
+logs-sbx/
