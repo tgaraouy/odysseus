@@ -70,7 +70,15 @@ if [ -f .env ] && ! yes "B. .env already exists — overwrite?"; then echo "Keep
 say "B1. Identity & auth"
 ADMIN_USER=$(ask "Admin username" "${USER:-admin}")
 ADMIN_PASS=$(asks "Admin password (blank = auto-generate)")
-PUID=$(ask "Host PUID" "$(id -u)"); PGID=$(ask "Host PGID" "$(id -g)")
+# Default PUID/PGID to 1000 — the stack is built around uid 1000: the sandbox
+# (code-exec) image runs as USER 1000:1000, so the app must drop to the SAME uid
+# or they can't share the /ipc socket volume (the runner crash-loops with
+# "bind: Address already in use" after a reboot, because a stale socket owned by
+# one uid can't be cleaned by the other). The old "$(id -u)" default broke this on
+# Windows, where Git Bash reports a large synthetic uid (e.g. 197609). Bind mounts
+# (./data) are uid-agnostic on Docker Desktop, so 1000 is safe there; override
+# only on native Linux if you need ./data owned by a specific host user.
+PUID=$(ask "Host PUID" "1000"); PGID=$(ask "Host PGID" "1000")
 
 say "B2/B3. LLM endpoints + network (defaults are usually fine)"
 OLLAMA=$(ask "OLLAMA_BASE_URL" "http://host.docker.internal:11434/v1")
