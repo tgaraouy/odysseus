@@ -56,6 +56,39 @@ def seed_default_library():
                 logger.error(f"Failed to seed default doc {name}: {e}")
 
 
+def seed_default_documents():
+    """Create the Discovery workspace as a living Document on first run (idempotent).
+    The Discovery panel maintains it; pre-seeding gives a fresh install the workspace
+    in the Library out of the box. Skips if a 'Discovery' document already exists."""
+    src = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "defaults", "documents", "discovery.md",
+    )
+    if not os.path.isfile(src):
+        return
+    try:
+        import uuid
+        from core.database import SessionLocal, Document, DocumentVersion
+        db = SessionLocal()
+        try:
+            if db.query(Document).filter(Document.title == "Discovery").first():
+                return
+            content = open(src, encoding="utf-8").read()
+            owner = os.getenv("ODYSSEUS_ADMIN_USER", "admin") or None
+            doc_id, ver_id = str(uuid.uuid4()), str(uuid.uuid4())
+            db.add(Document(id=doc_id, session_id=None, title="Discovery",
+                            language="markdown", current_content=content,
+                            version_count=1, is_active=True, owner=owner))
+            db.add(DocumentVersion(id=ver_id, document_id=doc_id, version_number=1,
+                                   content=content, summary="Initial version", source="seed"))
+            db.commit()
+            logger.info("Seeded Discovery workspace document (owner=%s)", owner)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("Failed to seed Discovery document: %s", e)
+
+
 def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     """
     Initialize all manager and handler instances.
@@ -66,9 +99,11 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     Returns:
         Dictionary containing all initialized components
     """
-    # Create directories first, then seed shipped default Library docs (idempotent)
+    # Create directories first, then seed shipped default Library docs + the
+    # Discovery workspace document (all idempotent)
     create_directories()
     seed_default_library()
+    seed_default_documents()
 
     # Initialize core managers
     memory_manager = MemoryManager(DATA_DIR)
