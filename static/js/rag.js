@@ -47,10 +47,11 @@ export async function loadPersonalDocs() {
       return;
     }
 
-    files.forEach(f => {
+    // Render one file row. `indent` nests it visually under a folder header.
+    const makeRow = (f, indent) => {
       const row = document.createElement('div');
       row.className = 'list-item';
-      row.style.cssText = 'display:flex;align-items:center;gap:4px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:4px;' + (indent ? 'padding-left:18px;' : '');
 
       const name = document.createElement('span');
       name.className = 'grow';
@@ -74,9 +75,52 @@ export async function loadPersonalDocs() {
         _deleteFile(f.path || f.name, f.name.split('/').pop());
       });
       row.appendChild(del);
+      return row;
+    };
 
-      box.appendChild(row);
+    // Group by top-level folder so the Library shows real, collapsible folders
+    // (e.g. "discovery/discovery-spec.md" → a "discovery" folder) instead of a
+    // flat list of basenames. Files with no "/" stay at the root.
+    const folders = {};
+    const rootFiles = [];
+    files.forEach(f => {
+      const i = (f.name || '').indexOf('/');
+      if (i > 0) { const k = f.name.slice(0, i); (folders[k] = folders[k] || []).push(f); }
+      else { rootFiles.push(f); }
     });
+
+    Object.keys(folders).sort().forEach(folder => {
+      const items = folders[folder];
+      const hdr = document.createElement('div');
+      hdr.className = 'list-item';
+      hdr.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;';
+      const caret = document.createElement('span');
+      caret.textContent = '▾';
+      caret.style.cssText = 'font-size:10px;width:10px;flex-shrink:0;color:var(--color-muted);';
+      hdr.appendChild(caret);
+      const label = document.createElement('span');
+      label.className = 'grow';
+      label.textContent = '📁 ' + folder;
+      label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      hdr.appendChild(label);
+      const count = document.createElement('span');
+      count.style.cssText = 'color:var(--color-muted);font-size:11px;flex-shrink:0;';
+      count.textContent = items.length;
+      hdr.appendChild(count);
+      box.appendChild(hdr);
+
+      const group = document.createElement('div');
+      items.forEach(f => group.appendChild(makeRow(f, true)));
+      box.appendChild(group);
+
+      hdr.addEventListener('click', () => {
+        const collapsed = group.style.display === 'none';
+        group.style.display = collapsed ? '' : 'none';
+        caret.textContent = collapsed ? '▾' : '▸';
+      });
+    });
+
+    rootFiles.forEach(f => box.appendChild(makeRow(f, false)));
   } catch (e) {
     console.error(e);
     box.innerHTML = '';
