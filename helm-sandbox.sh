@@ -22,6 +22,6 @@ case "$cmd" in
   ps)    "${DC[@]}" ps -a "$@" ;;
   logs)  "${DC[@]}" logs -f "$@" ;;
   down)  "${DC[@]}" down "$@" ;;
-  reset) "${DC[@]}" down -v "$@" ;;
+  reset) "${DC[@]}" down -v "$@"; rm -rf data-sbx logs-sbx 2>/dev/null; echo "wiped sandbox volumes + data-sbx/ logs-sbx/" ;;
   *) echo "usage: $0 {up|seed|ps|logs|down|reset} [args]"; exit 1 ;;
 esac

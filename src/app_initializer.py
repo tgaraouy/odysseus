@@ -57,36 +57,41 @@ def seed_default_library():
 
 
 def seed_default_documents():
-    """Create the Discovery workspace as a living Document on first run (idempotent).
-    The Discovery panel maintains it; pre-seeding gives a fresh install the workspace
-    in the Library out of the box. Skips if a 'Discovery' document already exists."""
-    src = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "defaults", "documents", "discovery.md",
+    """Create shipped default Documents (Discovery workspace, Loop Library, ...) in the
+    Library on first run. One per *.md in defaults/documents/; the title is derived from
+    the filename (discovery.md -> "Discovery", loop-library.md -> "Loop Library").
+    Idempotent and non-destructive: each is created only if no document with that title
+    already exists, so existing instances and user edits are never clobbered."""
+    src_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "defaults", "documents"
     )
-    if not os.path.isfile(src):
+    if not os.path.isdir(src_dir):
         return
     try:
         import uuid
         from core.database import SessionLocal, Document, DocumentVersion
+        owner = os.getenv("ODYSSEUS_ADMIN_USER", "admin") or None
         db = SessionLocal()
         try:
-            if db.query(Document).filter(Document.title == "Discovery").first():
-                return
-            content = open(src, encoding="utf-8").read()
-            owner = os.getenv("ODYSSEUS_ADMIN_USER", "admin") or None
-            doc_id, ver_id = str(uuid.uuid4()), str(uuid.uuid4())
-            db.add(Document(id=doc_id, session_id=None, title="Discovery",
-                            language="markdown", current_content=content,
-                            version_count=1, is_active=True, owner=owner))
-            db.add(DocumentVersion(id=ver_id, document_id=doc_id, version_number=1,
-                                   content=content, summary="Initial version", source="seed"))
-            db.commit()
-            logger.info("Seeded Discovery workspace document (owner=%s)", owner)
+            for name in sorted(os.listdir(src_dir)):
+                if not name.endswith(".md"):
+                    continue
+                title = name[:-3].replace("-", " ").replace("_", " ").title()
+                if db.query(Document).filter(Document.title == title).first():
+                    continue
+                content = open(os.path.join(src_dir, name), encoding="utf-8").read()
+                doc_id, ver_id = str(uuid.uuid4()), str(uuid.uuid4())
+                db.add(Document(id=doc_id, session_id=None, title=title,
+                                language="markdown", current_content=content,
+                                version_count=1, is_active=True, owner=owner))
+                db.add(DocumentVersion(id=ver_id, document_id=doc_id, version_number=1,
+                                       content=content, summary="Initial version", source="seed"))
+                db.commit()
+                logger.info("Seeded default document: %s (owner=%s)", title, owner)
         finally:
             db.close()
     except Exception as e:
-        logger.error("Failed to seed Discovery document: %s", e)
+        logger.error("Failed to seed default documents: %s", e)
 
 
 def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
