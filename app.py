@@ -595,6 +595,26 @@ async def health_hub_view(request: Request):
     return HTMLResponse(html)
 
 
+# Doctor-visit report — a standalone PHI summary written into the data volume
+# (data/doctor-visit-summary.html). Served behind auth, same pattern as /health.
+@app.get("/report", response_class=HTMLResponse)
+async def doctor_report_view(request: Request):
+    from routes.email_helpers import _require_auth
+    try:
+        _require_auth(request)
+    except HTTPException:
+        return RedirectResponse("/login")
+    from pathlib import Path as _P
+    f = _P("/app/data/doctor-visit-summary.html")
+    if not f.exists():
+        return HTMLResponse(
+            "<p style='font-family:monospace;padding:2rem'>No doctor-visit report has "
+            "been generated yet.</p>", status_code=404)
+    html = f.read_text(encoding="utf-8").replace(
+        "__CSP_NONCE__", getattr(request.state, "csp_nonce", ""))
+    return HTMLResponse(html)
+
+
 @app.post("/api/health/journal")
 async def health_journal_post(request: Request):
     """Self-service journal save from the /health panel -> bridge health_log_journal."""
