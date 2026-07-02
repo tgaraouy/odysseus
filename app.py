@@ -691,6 +691,43 @@ async def health_journal_post(request: Request):
     return JSONResponse({"ok": ok, "logged": fields, "result": res})
 
 
+@app.post("/api/health/bp")
+async def health_bp_post(request: Request):
+    """Quick blood-pressure log from the /health panel -> bridge health_log_bp.
+    Records systolic/diastolic/pulse as OBSERVED lab_results in the ledger."""
+    from routes.email_helpers import _require_auth
+    _require_auth(request)  # 401 if not authenticated
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        sysv = int(body.get("systolic") or 0)
+        diav = int(body.get("diastolic") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "error": "systolic/diastolic required"}, status_code=400)
+    if not (sysv and diav):
+        return JSONResponse({"ok": False, "error": "systolic/diastolic required"}, status_code=400)
+    fields = {"systolic": sysv, "diastolic": diav}
+    try:
+        p = int(body.get("pulse") or 0)
+    except (TypeError, ValueError):
+        p = 0
+    if p:
+        fields["pulse"] = p
+    for k in ("at", "arm", "note"):
+        v = (body.get(k) or "").strip()
+        if v:
+            fields[k] = v
+    qn = next((t["qualified_name"] for t in mcp_manager.get_all_tools()
+               if t["name"] == "health_log_bp"), None)
+    if not qn:
+        return JSONResponse({"ok": False, "error": "bp tool unavailable"}, status_code=503)
+    res = await mcp_manager.call_tool(qn, fields)
+    ok = not (isinstance(res, dict) and res.get("error"))
+    return JSONResponse({"ok": ok, "logged": fields, "result": res})
+
+
 @app.post("/api/health/analyze")
 async def health_analyze_post(request: Request):
     """One-tap 'Analyze my day': pull today's data via the bridge, return a short
