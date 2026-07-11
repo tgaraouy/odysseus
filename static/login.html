@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
-<title>Wonderful Mohtasib</title>
+<title>Mohtasib — contrôle de la commande publique</title>
 <script nonce="{{CSP_NONCE}}">
 (function(){
   // Per-theme bg-effect defaults — mirrors THEME_DEFAULT_* maps in
@@ -142,6 +142,22 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  /* Arabic wordmark beside the Latin one — serif, solid (not the gradient),
+     so المحتسب reads clearly and distinguishes this instance from Touf. */
+  .logo span.ar {
+    font-family: 'Source Serif 4', 'Geeza Pro', Georgia, serif;
+    font-weight: 500; font-size: 1.6rem; letter-spacing: 0;
+    margin-left: 0.55rem; vertical-align: 0.02em;
+    background: none; -webkit-background-clip: border-box; background-clip: border-box;
+    -webkit-text-fill-color: color-mix(in srgb, var(--fg) 78%, transparent);
+    color: color-mix(in srgb, var(--fg) 78%, transparent);
+  }
+  .brand-subtitle {
+    text-align: center; margin: -1rem 0 1.5rem;
+    font-family: 'Fira Code', monospace; font-size: 0.72rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: color-mix(in srgb, var(--fg) 52%, transparent);
+  }
   .setup-note { color: color-mix(in srgb, var(--fg) 60%, transparent); font-size: 0.8rem; margin-bottom: 1rem; text-align: center; }
   label { display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: color-mix(in srgb, var(--fg) 65%, transparent); }
   input:not(.remember-check) {
@@ -262,8 +278,9 @@
 </style>
 <main class="card">
   <h1 class="logo">
-    <span>Wonderful Mohtasib</span>
+    <span>Mohtasib</span><span class="ar" lang="ar" dir="rtl">المحتسب</span>
   </h1>
+  <p class="brand-subtitle">contrôle de la commande publique · Cour des Comptes</p>
   <p class="setup-note" id="setupNote" style="display:none"></p>
 
   <div class="error" id="error" role="alert" aria-live="assertive"></div>
