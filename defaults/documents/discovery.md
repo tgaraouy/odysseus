@@ -1,6 +1,6 @@
 # Discovery Spec — living workspace
 
-> The working spec for this Helm instance. Held **inside Odysseus** (per user-spec.md):
+> The working spec for this Mohtasib instance. Held **inside Odysseus** (per user-spec.md):
 > intent → outcomes → data → context → boundaries → mandate. Filled *with* the user
 > during the Discovery intake (use the **Discovery** persona), then it drives setup.
 > Rule: elicit, never prescribe; nothing is assumed; name the rule for any inference;

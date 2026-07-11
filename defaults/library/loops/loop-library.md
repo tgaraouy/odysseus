@@ -2,7 +2,7 @@
 
 > **31 reusable AI-agent workflows ("loops")** curated by **Forward Future** — source: https://signals.forwardfuture.ai/loop-library/
 >
-> Imported into Helm 2026-06-19. Each loop is a repeatable agent workflow: when to use it, the prompt to run, how to verify it's done, and why it works. Credit to Forward Future and the individual loop authors.
+> Imported into Mohtasib 2026-06-19. Each loop is a repeatable agent workflow: when to use it, the prompt to run, how to verify it's done, and why it works. Credit to Forward Future and the individual loop authors.
 
 **Categories:** Engineering · Evaluation · Operations · Content · Design
 
