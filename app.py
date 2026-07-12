@@ -510,6 +510,10 @@ webhook_manager = WebhookManager(api_key_manager=api_key_manager)
 auth_router = setup_auth_routes(auth_manager)
 app.include_router(auth_router)
 
+# Mohtasib — role assignment admin UI + API (RBAC)
+from routes.mohtasib_routes import setup_mohtasib_routes
+app.include_router(setup_mohtasib_routes(auth_manager))
+
 # Uploads
 from routes.upload_routes import setup_upload_routes
 upload_router, upload_cleanup_func = setup_upload_routes(upload_handler)

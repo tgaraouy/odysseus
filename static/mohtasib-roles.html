@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attribution des rôles — Mohtasib</title>
+<link rel="icon" type="image/svg+xml" href="/static/icon-192.png">
+<style>
+:root{
+  --bg:#17150F; --panel:#1F1D17; --panel-2:#282520; --line:#3B372E;
+  --fg:#F4F0E6; --fg-2:#C9C2B1; --fg-3:#8A8373; --seal:#C65A52; --seal-solid:#9E2B25;
+  --measured:#7FBF97; --observed:#8FB4DE; --inferred:#D9A94E; --claimed:#A79E8C;
+  --serif:'Source Serif 4',Georgia,serif; --sans:Inter,-apple-system,'Helvetica Neue',sans-serif; --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:36px 22px 90px}
+.brand{display:flex;align-items:center;gap:11px;color:var(--fg)}
+.wm{font-family:var(--mono);font-weight:700;font-size:19px;letter-spacing:-.03em}.wm .v{color:var(--fg-3)}
+.ar{font-family:var(--serif);font-size:17px;color:var(--fg-3)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);margin-top:18px}
+h1{font-family:var(--serif);font-weight:500;font-size:30px;letter-spacing:-.015em;margin:.25em 0 .15em}
+.lede{color:var(--fg-2);max-width:70ch;margin:0 0 8px;font-size:14.5px}
+a.back{color:var(--observed);text-decoration:none;font-size:13px;font-family:var(--mono)}
+.msg{margin:16px 0;padding:10px 14px;border-radius:5px;font-size:13.5px;display:none}
+.msg.ok{background:rgba(127,191,151,.15);color:var(--measured);display:block}
+.msg.err{background:rgba(198,90,82,.15);color:var(--seal);display:block}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.lg{font-family:var(--mono);font-size:11px;color:var(--fg-3);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.user{border:1px solid var(--line);border-radius:7px;background:var(--panel);margin-top:12px;overflow:hidden}
+.user-head{display:flex;align-items:center;gap:10px;padding:12px 15px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.uname{font-family:var(--mono);font-weight:500;font-size:14.5px}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:2px 7px;border-radius:999px;background:rgba(143,180,222,.18);color:var(--observed)}
+.badge.orphan{background:rgba(217,169,78,.16);color:var(--inferred)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:14px 15px}
+.chip{cursor:pointer;user-select:none;border:1.5px solid var(--line);border-radius:6px;padding:7px 11px;font-size:13px;color:var(--fg-2);background:transparent;transition:all .12s ease;display:flex;flex-direction:column;gap:2px;min-width:150px}
+.chip small{font-size:10.5px;color:var(--fg-3);line-height:1.3}
+.chip:hover{border-color:var(--fg-3)}
+.chip.on{border-color:var(--seal);background:rgba(198,90,82,.12);color:var(--fg)}
+.chip.on small{color:var(--seal)}
+.row-foot{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 15px 13px}
+.dirty{font-size:12px;color:var(--inferred);font-family:var(--mono);margin-right:auto;display:none}
+.dirty.show{display:inline}
+button.save{background:var(--seal-solid);color:#F4F0E6;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
+button.save:hover{background:#832119}
+button.save:disabled{opacity:.4;cursor:default}
+.empty{color:var(--fg-3);font-size:13.5px;margin-top:20px}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="1.25"/><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="2.4 2.15"/><path d="M16 5.2 L18.9 13.1 L26.8 16 L18.9 18.9 L16 26.8 L13.1 18.9 L5.2 16 L13.1 13.1 Z" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="#9E2B25"/></svg>
+    <span class="wm">mohtasib<span class="v">/cdc</span></span><span class="ar">المحتسب</span>
+  </div>
+  <div class="eyebrow">administration · RBAC</div>
+  <h1>Attribution des rôles</h1>
+  <p class="lede">Assigner à chaque utilisateur ses rôles Mohtasib. Le rôle détermine ce qu'il voit et peut
+  faire — appliqué côté serveur et journalisé. Un utilisateur sans rôle n'a accès à rien (fail-closed).</p>
+  <a class="back" href="/">← retour à l'application</a>
+  <div class="msg" id="msg"></div>
+  <div class="legend" id="legend"></div>
+  <div id="list"><p class="empty">Chargement…</p></div>
+</div>
+
+<script>
+const LEVELCOLORS = {verificateur:'#C65A52',chef_mission:'#C65A52',magistrat:'#7FBF97',ethique:'#D9A94E',president:'#8FB4DE',admin:'#A79E8C'};
+let CATALOG = [];
+
+function show(msg, ok){ const m=document.getElementById('msg'); m.textContent=msg; m.className='msg '+(ok?'ok':'err'); setTimeout(()=>{m.className='msg';},4000); }
+
+async function load(){
+  let r;
+  try { r = await fetch('/api/mohtasib/roles', {credentials:'same-origin'}); }
+  catch(e){ document.getElementById('list').innerHTML='<p class="empty">Erreur réseau.</p>'; return; }
+  if(r.status===403){ document.getElementById('list').innerHTML='<p class="empty">Réservé aux administrateurs.</p>'; return; }
+  if(!r.ok){ document.getElementById('list').innerHTML='<p class="empty">Non authentifié — <a class="back" href="/login">se connecter</a>.</p>'; return; }
+  const data = await r.json();
+  CATALOG = data.catalog;
+  document.getElementById('legend').innerHTML = CATALOG.map(c=>`<span class="lg" style="border-color:${LEVELCOLORS[c.id]}55">${c.label}</span>`).join('');
+  const list = document.getElementById('list');
+  if(!data.users.length){ list.innerHTML='<p class="empty">Aucun utilisateur.</p>'; return; }
+  list.innerHTML = data.users.map(u=>renderUser(u)).join('');
+  data.users.forEach(u=>wire(u.username));
+}
+
+function renderUser(u){
+  const chips = CATALOG.map(c=>{
+    const on = u.roles.includes(c.id);
+    return `<div class="chip ${on?'on':''}" data-user="${u.username}" data-role="${c.id}">
+      <span>${c.label}</span><small>${c.desc}</small></div>`;
+  }).join('');
+  return `<div class="user" data-u="${u.username}">
+    <div class="user-head">
+      <span class="uname">${u.username}</span>
+      ${u.is_admin?'<span class="badge">app-admin</span>':''}
+      ${u.orphan?'<span class="badge orphan">non-app</span>':''}
+    </div>
+    <div class="chips">${chips}</div>
+    <div class="row-foot">
+      <span class="dirty" id="dirty-${u.username}">modifié — non enregistré</span>
+      <button class="save" id="save-${u.username}" disabled>Enregistrer</button>
+    </div>
+  </div>`;
+}
+
+function wire(username){
+  const root = document.querySelector(`.user[data-u="${CSS.escape(username)}"]`);
+  const save = document.getElementById('save-'+username);
+  const dirty = document.getElementById('dirty-'+username);
+  root.querySelectorAll('.chip').forEach(ch=>{
+    ch.addEventListener('click', ()=>{ ch.classList.toggle('on'); save.disabled=false; dirty.classList.add('show'); });
+  });
+  save.addEventListener('click', async ()=>{
+    const roles = [...root.querySelectorAll('.chip.on')].map(c=>c.dataset.role);
+    save.disabled=true;
+    try{
+      const r = await fetch('/api/mohtasib/roles', {method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify({username, roles})});
+      if(!r.ok){ show('Échec ('+r.status+') — droits administrateur requis.', false); save.disabled=false; return; }
+      const d = await r.json();
+      dirty.classList.remove('show');
+      show(`Rôles de « ${username} » enregistrés : ${d.roles.join(', ')||'aucun'}.`, true);
+    }catch(e){ show('Erreur réseau.', false); save.disabled=false; }
+  });
+}
+load();
+</script>
+</body></html>
