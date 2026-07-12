@@ -7,7 +7,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'mohtasib-v332';
+const CACHE_NAME = 'mohtasib-v333';
 
 // Core shell precached on install so repeat opens are instant without any
 // network wait. Keep this list in sync with the <script type="module"> tags
@@ -85,13 +85,11 @@ self.addEventListener('activate', (e) => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
-    // A PRIOR service worker cached '/' and served the generic app shell,
-    // swallowing the / → /mohtasib redirect. Now that this version (which
-    // never caches navigations) has taken over, reload any open windows ONCE
-    // so the server decides the landing page. Single reload for the user.
-    .then(() => self.clients.matchAll({ type: 'window' }))
-    .then(clients => clients.forEach(c => { try { c.navigate(c.url); } catch (_) {} }))
   );
+  // NOTE: no auto-navigate here. It reloaded windows to whatever URL they were
+  // on (including the generic app), which caused a confusing bounce. Navigations
+  // are network-first below, so the server's / → /mohtasib redirect applies on
+  // the next reload — deterministic, no loop.
 });
 
 self.addEventListener('fetch', (e) => {

@@ -93,8 +93,8 @@ async function boot(){
   let r;
   try{ r=await fetch('/api/mohtasib/overview',{credentials:'same-origin'}); }
   catch(e){ document.getElementById('main').innerHTML='<p class="empty">Erreur réseau.</p>'; return; }
-  if(r.status===401){ location.href='/login'; return; }
-  if(!r.ok){ document.getElementById('main').innerHTML='<p class="empty">Accès refusé.</p>'; return; }
+  if(r.status===401){ document.getElementById('main').innerHTML='<p class="empty">Session expirée ou non connecté. <a href="/login" style="color:var(--observed)">Se connecter</a>.</p>'; return; }
+  if(!r.ok){ document.getElementById('main').innerHTML='<p class="empty">Le service de données a répondu '+r.status+'. Réessayez, ou <a href="/agent" style="color:var(--observed)">ouvrir l’application agent</a>.</p>'; return; }
   D=await r.json();
   document.getElementById('role-badge').textContent = (D.roles&&D.roles.length)? D.roles.join(' · ') : 'aucun rôle — accès nul';
   const shown = SECTIONS.filter(s=>D[s.id]!=null);
