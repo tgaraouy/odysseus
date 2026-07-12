@@ -26,9 +26,27 @@ async function boot(){
     return `<a data-s="${s.id}">${s.label}${n!==''?`<span class="n">${n}</span>`:''}</a>`;
   }).join('') || '<p class="note" style="padding:8px">Aucune section — votre rôle ne donne accès à rien.</p>';
   document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.s));
-  if(shown.length) go(shown[0].id); else document.getElementById('main').innerHTML='<p class="empty">Aucun accès.</p>';
+  if(shown.length) route(); else document.getElementById('main').innerHTML='<p class="empty">Aucun accès.</p>';
 }
-function go(id){ active=id; if(id!=='dossiers') TEN=null; document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.s===id)); render(); }
+function setNavActive(id){ document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.s===id)); }
+function go(id){ if(location.hash.replace(/^#/,'')===id) route(); else location.hash=id; }
+
+// URL is the source of truth: #<section> or #dossier=<encoded ref>. Deep-links
+// and browser back/forward both flow through route().
+async function route(){
+  if(!D) return;
+  const h = location.hash.replace(/^#/,'');
+  if(h.indexOf('dossier=')===0){
+    const ref = decodeURIComponent(h.slice('dossier='.length));
+    active='dossiers'; setNavActive('dossiers');
+    if(!TEN || TEN.reference!==ref) await openTender(ref); else render();
+    return;
+  }
+  const shown = SECTIONS.filter(s=>D[s.id]!=null);
+  const sec = shown.find(s=>s.id===h);
+  const target = sec ? sec.id : (shown[0] && shown[0].id);
+  active=target; TEN=null; setNavActive(target); render();
+}
 
 function render(){
   const m=document.getElementById('main');
@@ -251,6 +269,7 @@ function jour(){
 // open a dossier when its card is clicked (event delegation survives re-renders)
 document.getElementById('main').addEventListener('click', e=>{
   const card=e.target.closest('.doss-card');
-  if(card && card.dataset.ref){ openTender(card.dataset.ref); }
+  if(card && card.dataset.ref){ location.hash='dossier='+encodeURIComponent(card.dataset.ref); }
 });
+window.addEventListener('hashchange', route);
 boot();
