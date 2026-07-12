@@ -418,6 +418,21 @@ def setup_mohtasib_routes(auth_manager):
                     "en_attente": len([f for f in tf if f.get("statut") != "valide"]),
                 })
 
+        # schémas inter-marchés — the predictive collusion detector, run live on
+        # real attribution data (visible with signalement/dashboard access)
+        inter_marche = None
+        if visible("signalements") or visible("dashboard"):
+            try:
+                import importlib
+                if _DATA not in sys.path:
+                    sys.path.insert(0, _DATA)
+                import collusion as COL
+                importlib.reload(COL)
+                _cd, _recs, _label = COL.load()
+                inter_marche = COL.detect(_cd, _recs, _label)
+            except Exception as e:
+                inter_marche = {"erreur": str(e)}
+
         # conformité au défi — the spec_conformance validator, run live (meta-assurance)
         conformite = None
         if visible("dashboard") or visible("metriques"):
@@ -439,6 +454,7 @@ def setup_mohtasib_routes(auth_manager):
             "dashboard": dashboard if visible("dashboard") or "exists" in access.get("dashboard", []) else None,
             "dossiers": dossiers,
             "signalements": signalements,
+            "inter_marche": inter_marche,
             "ethique": ethique,
             "validation": validation,
             "metriques": metrics if visible("metriques") else None,

@@ -2,6 +2,7 @@ const SECTIONS = [
   {id:'dashboard',   label:'Tableau de bord'},
   {id:'dossiers',    label:'Dossiers'},
   {id:'signalements',label:'Signalements'},
+  {id:'inter_marche',label:'Schémas inter-marchés'},
   {id:'validation',  label:'Validation'},
   {id:'ethique',     label:'Éthique & probité'},
   {id:'metriques',   label:'Métriques'},
@@ -52,7 +53,7 @@ async function route(){
 function render(){
   const m=document.getElementById('main');
   if(active==='dossiers' && TEN){ m.innerHTML = tenderView(); return; }
-  const R={dashboard:dash,dossiers:doss,signalements:sig,validation:val,ethique:eth,metriques:met,conformite:conf,journal:jour}[active];
+  const R={dashboard:dash,dossiers:doss,signalements:sig,inter_marche:inter,validation:val,ethique:eth,metriques:met,conformite:conf,journal:jour}[active];
   m.innerHTML = R? R() : '<p class="empty">—</p>';
 }
 function head(eb,h){ return `<div class="eyebrow">${eb}</div><h1>${h}</h1>`; }
@@ -254,6 +255,37 @@ function met(){
     html+=`<h2 style="margin-top:22px">${label} <span class="confp ${g.source||''}" style="font-size:9px">${g.source||''}</span></h2><div class="metric-grid">`+
       items.map(([kk,vv])=>`<div class="metric"><div class="mk">${kk.replace(/_/g,' ')}</div><div class="mv">${typeof vv==='object'?(vv.valeur??vv.mediane??JSON.stringify(vv).slice(0,40)):vv}</div><div class="md">${typeof vv==='object'?(vv.detail||vv.src||''):''}</div></div>`).join('')+`</div>`;
   }
+  return html;
+}
+function inter(){
+  const im=D.inter_marche; if(!im) return '<p class="empty">Accès restreint.</p>';
+  if(im.erreur) return head('détection prédictive','Schémas inter-marchés')+`<p class="empty">Détecteur indisponible : ${esc(im.erreur)}</p>`;
+  const c=im.corpus||{};
+  const SEV={majeur:'◆',mineur:'•',info:'✓'};
+  const PUI={faible:'INFERRED',moyenne:'OBSERVED',bonne:'MEASURED'};
+  let html=head('détection prédictive · à travers les marchés','Schémas inter-marchés')+
+    `<div class="tiles">
+      <div class="tile"><div class="k">PV lisibles</div><div class="v">${c.n_lisibles}/${c.n_pv}</div></div>
+      <div class="tile"><div class="k">Entreprises</div><div class="v">${c.n_firmes}</div></div>
+      <div class="tile"><div class="k">Signaux</div><div class="v">${(im.signaux||[]).length}</div></div>
+    </div>
+    <div class="masked" style="border-color:rgba(143,180,222,.3);background:rgba(143,180,222,.08);color:var(--fg-2)">${esc(c.adequation||'')}</div>`;
+  html+=(im.signaux||[]).map(s=>`
+    <div class="flag sev-${s.severite==='info'?'mineur':s.severite}">
+      <div class="flag-h">
+        <span class="glyph">${SEV[s.severite]||'•'}</span>
+        <span class="mono">[${esc(s.type)}]</span><strong>${esc(s.titre)}</strong>
+        <span class="confp ${esc(s.confiance)}">${esc(s.confiance)}</span>
+        <span class="conf">puissance ${esc(s.puissance)}</span>
+      </div>
+      <div class="flag-b">
+        <div><span class="cle">observé</span>${esc(s.observe)}</div>
+        ${s.marches&&s.marches.length?`<div><span class="cle">marchés</span>${s.marches.filter(Boolean).map(esc).join(', ')}</div>`:''}
+        ${s.firmes&&s.firmes.length?`<div><span class="cle">entreprises</span>${s.firmes.map(esc).join(' · ')}</div>`:''}
+        <div><span class="cle">base</span>${esc(s.base)}</div>
+        ${s.note_absence?`<div><span class="cle">lecture</span><em>${esc(s.note_absence)}</em></div>`:''}
+      </div>
+    </div>`).join('');
   return html;
 }
 function conf(){
