@@ -284,6 +284,12 @@ if AUTH_ENABLED:
             # Cloudflare tunnel / reverse proxy. Keep LOCALHOST_BYPASS=false for
             # network-exposed deployments regardless.
             if LOCALHOST_BYPASS and _is_trusted_loopback(request):
+                # Under bypass there is no session, so downstream code (Mohtasib
+                # RBAC role lookup, the console's require_user, the / → /mohtasib
+                # redirect) has no identity. Act as the admin — the single-admin
+                # loopback assumption that LOCALHOST_BYPASS already encodes.
+                if not getattr(request.state, "current_user", None):
+                    request.state.current_user = os.getenv("ODYSSEUS_ADMIN_USER", "admin")
                 return await call_next(request)
             if not auth_manager.is_configured:
                 # No users yet — redirect to login for first-time setup
