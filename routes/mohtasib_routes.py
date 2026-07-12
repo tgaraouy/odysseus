@@ -95,6 +95,215 @@ def _access_for(roles_csv):
     return out
 
 
+# ── per-tender dossier assembly (real artifacts from the mounted prototype) ──
+def _portal_index():
+    """Map every portal.json in data/ by its 'reference' AND its file stem, so a
+    signalement's tender label resolves to its extracted metadata + amendments."""
+    idx = {}
+    ddir = os.path.join(_DATA, "data")
+    try:
+        names = os.listdir(ddir)
+    except Exception:
+        return idx
+    for fn in names:
+        if not fn.endswith("_portal.json"):
+            continue
+        p = _read_json(os.path.join(ddir, fn), None)
+        if not isinstance(p, dict):
+            continue
+        stem = fn[:-len("_portal.json")]
+        idx[stem] = p
+        ref = p.get("reference")
+        if ref:
+            idx[ref] = p
+    return idx
+
+
+def _find_capture(slug):
+    """capture.json carries the OCR fidelity evidence for a tender's source PDF.
+    It lives under inbox/captured_<slug>/ in the prototype; return {} if absent."""
+    for cand in (os.path.join(_DATA, "inbox", "captured_" + slug, "capture.json"),
+                 os.path.join(_DATA, "data", "captured", slug, "capture.json")):
+        c = _read_json(cand, None)
+        if isinstance(c, dict):
+            return c
+    return {}
+
+
+def _journal_for_tender(ref):
+    """Return the journal blocks (validation, capture, livrable) that name this
+    tender — read-only, no writes to the mount."""
+    import sqlite3
+    db = os.path.join(_DATA, "data", "journal.db")
+    if not os.path.exists(db):
+        return []
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        rows = con.execute("SELECT seq, block_type, actor, timestamp, payload, confidence, hash "
+                           "FROM journal ORDER BY seq ASC").fetchall()
+    except Exception:
+        return []
+    finally:
+        con.close()
+    import re
+    # take the "AO<number>" head, stopping at the year separator: AO-12/2024 -> AO12
+    m = re.match(r"([A-Za-z]+)[-_ ]?(\d+)", ref)
+    token = (m.group(1) + m.group(2)).upper() if m else re.sub(r"[^A-Z0-9]", "", ref.upper())[:4]
+    out = []
+    for (seq, bt, actor, ts, pj, conf, h) in rows:
+        try:
+            p = json.loads(pj)
+        except Exception:
+            p = {}
+        blob = re.sub(r"[^A-Z0-9]", "", json.dumps(p, ensure_ascii=False).upper())
+        if token and token in blob:
+            out.append({"seq": seq, "type": bt, "actor": actor, "ts": ts,
+                        "confiance": conf, "hash10": (h or "")[:10],
+                        "verdict": p.get("verdict"), "claim_id": p.get("claim_id")})
+    return out
+
+
+def _tender_capture_fidelite(cap):
+    """Derive an honest fidelity read from capture.json (no invented numbers)."""
+    if not cap:
+        return None
+    tl, ocr = cap.get("text_layer_chars"), cap.get("ocr_chars")
+    recall = None
+    if isinstance(tl, int) and isinstance(ocr, int) and max(tl, ocr):
+        recall = round(min(tl, ocr) / max(tl, ocr), 3)
+    return {
+        "pdf": cap.get("pdf"), "pages": cap.get("pages"),
+        "source_retenue": cap.get("kept"), "langue_ocr": cap.get("ocr_lang"),
+        "text_layer_chars": tl, "ocr_chars": ocr,
+        "text_layer_sain": cap.get("text_layer_sane"),
+        "concordance_tl_ocr": recall,
+        "erreur_ocr": cap.get("ocr_error"),
+    }
+
+
+def _build_dossier(ref, flags, access, livrables):
+    """Assemble the full end-to-end chain for one tender from real artifacts.
+    Each stage is present with data, or explicitly marked absent — never faked."""
+    def can(section, action="view"):
+        return action in access.get(section, [])
+
+    slug = ref.replace("/", "_").replace(" ", "_")
+    portal = _portal_index().get(ref) or _portal_index().get(slug)
+    cap = _find_capture(slug) if slug else {}
+    tflags = [f for f in flags if f.get("tender") == ref]
+    sev = Counter(f.get("severite") for f in tflags)
+
+    # 1. Collecte — source + extracted metadata
+    if portal:
+        docs = list(portal.get("documents_presents", []))
+        amend = portal.get("amendements", [])
+        collecte = {
+            "present": True,
+            "reference": portal.get("reference", ref),
+            "objet": portal.get("objet"),
+            "procedure": portal.get("procedure"),
+            "montant_estime_dh": portal.get("montant_estime_dh"),
+            "date_publication": portal.get("date_publication"),
+            "date_ouverture": portal.get("date_ouverture"),
+            "documents_presents": docs,
+            "sha256_pdf": portal.get("sha256_pdf"),
+            "n_versions": 1 + len(amend),
+        }
+    else:
+        collecte = {"present": False,
+                    "note": "Aucun portal.json extrait pour ce marché — signalé mais dossier "
+                            "source non ingéré dans ce périmètre."}
+
+    # 2. Capture / OCR fidelity
+    capture = _tender_capture_fidelite(cap)
+
+    # 3. Extraction — the base (avant amendements) vs courant
+    extraction = None
+    if portal:
+        base = portal.get("base_origine", {})
+        extraction = {
+            "base": {k: base.get(k) for k in ("objet", "date_ouverture", "montant_estime_dh")},
+            "courant": {"objet": portal.get("objet"), "date_ouverture": portal.get("date_ouverture"),
+                        "montant_estime_dh": portal.get("montant_estime_dh")},
+        }
+
+    # 4. Réconciliation — the amendment chain (no blind last-writer-wins)
+    reconciliation = None
+    if portal and portal.get("amendements"):
+        chain = []
+        for a in portal["amendements"]:
+            champs = []
+            for field, ch in (a.get("champs_modifies") or {}).items():
+                champs.append({"champ": field, "avant": ch.get("avant"), "apres": ch.get("apres"),
+                               "statut": ch.get("statut"), "problemes": ch.get("problemes", [])})
+            chain.append({"document": a.get("document"), "date": a.get("date_document"),
+                          "type": a.get("type"), "sha256": a.get("sha256"), "champs": champs})
+        reconciliation = {"versions": chain}
+
+    # 5. Contrôles — signalements (RBAC: content vs masked count)
+    if can("signalements"):
+        controles = tflags
+    elif "exists" in access.get("signalements", []):
+        controles = {"masque": True, "n": len(tflags)}
+    else:
+        controles = None
+
+    # 6. Validation — journal verdicts + pending
+    validation = None
+    if can("validation") or "exists" in access.get("validation", []):
+        jval = [b for b in _journal_for_tender(ref) if b["type"] == "validation"]
+        pend = [f for f in tflags if f.get("statut") != "valide"]
+        validation = {"verdicts": jval, "en_attente": len(pend),
+                      "peut_valider": can("validation", "validate")}
+
+    # 7. Livrables — the deliverables that cite this tender
+    livr = None
+    if can("livrables"):
+        livr = [l for l in livrables if ref in l.get("cite", []) or l.get("global")]
+
+    # 8. Journal — the tender's hash-chained proof blocks
+    jour = None
+    if can("journal"):
+        jour = _journal_for_tender(ref)
+
+    return {
+        "reference": ref,
+        "par_severite": {k: sev.get(k, 0) for k in ("critique", "majeur", "mineur")},
+        "n_signalements": len(tflags),
+        "collecte": collecte,
+        "capture": capture,
+        "extraction": extraction,
+        "reconciliation": reconciliation,
+        "controles": controles,
+        "validation": validation,
+        "livrables": livr,
+        "journal": jour,
+    }
+
+
+def _livrables_index():
+    """The generated deliverables in livrables/, with which tenders each cites."""
+    ldir = os.path.join(_DATA, "livrables")
+    out = []
+    try:
+        names = sorted(os.listdir(ldir))
+    except Exception:
+        return out
+    for fn in names:
+        if not fn.endswith(".md"):
+            continue
+        try:
+            with open(os.path.join(ldir, fn), encoding="utf-8") as f:
+                body = f.read()
+        except Exception:
+            body = ""
+        cite = [t for t in ("AO-12/2024", "AO_07_2024_essaouira", "AO_15_2024_ar_scanne")
+                if t in body or t.replace("_", " ") in body or t.split("/")[0] in body]
+        out.append({"fichier": fn, "titre": body.splitlines()[0].lstrip("# ").strip() if body else fn,
+                    "octets": len(body.encode("utf-8")), "cite": cite, "global": not cite})
+    return out
+
+
 class RoleAssignment(BaseModel):
     username: str
     roles: list[str] = []
@@ -191,15 +400,48 @@ def setup_mohtasib_routes(auth_manager):
             except Exception as e:
                 journal_info = {"erreur": str(e)}
 
+        # dossiers — one row per tender, so the console can list them and drill in
+        dossiers = None
+        if visible("dashboard") or visible("signalements") or "exists" in access.get("signalements", []):
+            pidx = _portal_index()
+            dossiers = []
+            for t in tenders:
+                tf = [f for f in flags if f.get("tender") == t]
+                sv = Counter(f.get("severite") for f in tf)
+                slug = t.replace("/", "_").replace(" ", "_")
+                dossiers.append({
+                    "reference": t,
+                    "n_signalements": len(tf),
+                    "par_severite": {k: sv.get(k, 0) for k in ("critique", "majeur", "mineur")},
+                    "has_portal": bool(pidx.get(t) or pidx.get(slug)),
+                    "has_capture": bool(_find_capture(slug)),
+                    "en_attente": len([f for f in tf if f.get("statut") != "valide"]),
+                })
+
         return {
             "user": user, "roles": roles_csv.split(",") if roles_csv else [],
             "access": access,
             "dashboard": dashboard if visible("dashboard") or "exists" in access.get("dashboard", []) else None,
+            "dossiers": dossiers,
             "signalements": signalements,
             "ethique": ethique,
             "validation": validation,
             "metriques": metrics if visible("metriques") else None,
             "journal": journal_info,
         }
+
+    @router.get("/api/mohtasib/tender/{ref:path}")
+    def api_tender(ref: str, user: str = Depends(require_user)):
+        roles_csv = role_for_owner(user)
+        access = _access_for(roles_csv)
+        # gate: need at least dashboard or signalements existence to open a dossier
+        if not (access.get("dashboard") or access.get("signalements")):
+            raise HTTPException(403, "Accès refusé à ce dossier pour votre rôle.")
+        flags = _read_json(os.path.join(_DATA, "flags.json"), [])
+        known = {f.get("tender") for f in flags}
+        if ref not in known:
+            raise HTTPException(404, f"Marché inconnu: {ref}")
+        livrables = _livrables_index()
+        return _build_dossier(ref, flags, access, livrables)
 
     return router

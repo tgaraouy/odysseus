@@ -1,5 +1,6 @@
 const SECTIONS = [
   {id:'dashboard',   label:'Tableau de bord'},
+  {id:'dossiers',    label:'Dossiers'},
   {id:'signalements',label:'Signalements'},
   {id:'validation',  label:'Validation'},
   {id:'ethique',     label:'Éthique & probité'},
@@ -7,7 +8,7 @@ const SECTIONS = [
   {id:'journal',     label:'Journal & assurance'},
 ];
 const GLY={critique:'▲',majeur:'◆',mineur:'•'};
-let D=null, active='dashboard';
+let D=null, active='dashboard', TEN=null;  // TEN = the currently open dossier (per-tender)
 
 async function boot(){
   let r;
@@ -21,19 +22,159 @@ async function boot(){
   document.getElementById('nav').innerHTML = shown.map(s=>{
     let n=''; if(s.id==='signalements'&&D.dashboard) n=D.dashboard.n_signalements;
     if(s.id==='validation'&&D.validation) n=(D.validation.file||[]).length;
+    if(s.id==='dossiers'&&D.dossiers) n=D.dossiers.length;
     return `<a data-s="${s.id}">${s.label}${n!==''?`<span class="n">${n}</span>`:''}</a>`;
   }).join('') || '<p class="note" style="padding:8px">Aucune section — votre rôle ne donne accès à rien.</p>';
   document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.s));
   if(shown.length) go(shown[0].id); else document.getElementById('main').innerHTML='<p class="empty">Aucun accès.</p>';
 }
-function go(id){ active=id; document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.s===id)); render(); }
+function go(id){ active=id; if(id!=='dossiers') TEN=null; document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.s===id)); render(); }
 
 function render(){
   const m=document.getElementById('main');
-  const R={dashboard:dash,signalements:sig,validation:val,ethique:eth,metriques:met,journal:jour}[active];
+  if(active==='dossiers' && TEN){ m.innerHTML = tenderView(); return; }
+  const R={dashboard:dash,dossiers:doss,signalements:sig,validation:val,ethique:eth,metriques:met,journal:jour}[active];
   m.innerHTML = R? R() : '<p class="empty">—</p>';
 }
 function head(eb,h){ return `<div class="eyebrow">${eb}</div><h1>${h}</h1>`; }
+function esc(v){ return (v==null?'':String(v)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function sevChips(s){ s=s||{}; return `${s.critique?`<span class="chip crit">▲ ${s.critique} crit.</span>`:''}${s.majeur?`<span class="chip maj">◆ ${s.majeur} maj.</span>`:''}${s.mineur?`<span class="chip min">• ${s.mineur} min.</span>`:''}`; }
+
+// ── Dossiers: list of tenders, each opening a full end-to-end drill-down ──
+function doss(){
+  const list=D.dossiers; if(!list) return '<p class="empty">Accès restreint.</p>';
+  if(!list.length) return head('marchés','Dossiers')+'<p class="empty">Aucun dossier.</p>';
+  return head('marchés · cliquer pour le cycle complet','Dossiers')+
+    '<p class="note">Chaque dossier suit la chaîne : collecte → capture → extraction → réconciliation → contrôles → validation → livrables → journal. Couverture exhaustive du périmètre, pas d’échantillon.</p>'+
+    '<div class="doss-grid">'+list.map(t=>`
+      <div class="doss-card" data-ref="${esc(t.reference)}">
+        <div class="doss-ref mono">${esc(t.reference)}</div>
+        <div class="doss-sev">${sevChips(t.par_severite)}</div>
+        <div class="doss-meta">
+          <span>${t.n_signalements} signalement(s)</span>
+          <span>${t.en_attente} en attente</span>
+          <span class="${t.has_portal?'ok':'off'}">${t.has_portal?'source ✓':'source absente'}</span>
+          ${t.has_capture?'<span class="ok">OCR ✓</span>':''}
+        </div>
+        <div class="doss-open">ouvrir le cycle →</div>
+      </div>`).join('')+'</div>';
+}
+
+async function openTender(ref){
+  const m=document.getElementById('main');
+  m.innerHTML='<p class="empty">Chargement du dossier '+esc(ref)+'…</p>';
+  const url='/api/mohtasib/tender/'+ref.split('/').map(encodeURIComponent).join('/');
+  try{
+    const r=await fetch(url,{credentials:'same-origin'});
+    if(!r.ok){ m.innerHTML='<p class="empty">Dossier indisponible ('+r.status+'). <a onclick="go(\'dossiers\')" style="color:var(--observed);cursor:pointer">retour</a></p>'; return; }
+    TEN=await r.json(); active='dossiers'; render();
+  }catch(e){ m.innerHTML='<p class="empty">Erreur réseau.</p>'; }
+}
+
+function step(n,title,sub,body){
+  return `<li class="tl-step"><div class="tl-n">${n}</div>
+    <div class="tl-body"><div class="tl-h"><b>${title}</b><span class="tl-sub">${sub}</span></div>
+    <div class="tl-c">${body}</div></div></li>`;
+}
+function kv(k,v){ return v==null||v===''?'':`<div class="kv"><span class="cle">${k}</span><span>${esc(v)}</span></div>`; }
+
+function stepCollecte(c){
+  if(!c) return '<p class="note">Accès restreint.</p>';
+  if(!c.present) return `<p class="note">${esc(c.note||'Source non ingérée.')}</p>`;
+  return `<div class="grid2">
+    ${kv('objet',c.objet)}${kv('procédure',c.procedure)}
+    ${kv('montant estimé',c.montant_estime_dh!=null?Number(c.montant_estime_dh).toLocaleString('fr')+' DH':'')}
+    ${kv('publication',c.date_publication)}${kv('ouverture',c.date_ouverture)}
+    ${kv('pièces',(c.documents_presents||[]).join(', '))}
+    ${kv('versions',c.n_versions)}
+    <div class="kv"><span class="cle">sha256 PDF</span><span class="mono h">${esc((c.sha256_pdf||'').slice(0,32))}…</span></div>
+  </div>`;
+}
+function stepCapture(cap){
+  if(!cap) return '<p class="note">Pas de capture OCR distincte pour ce marché dans ce périmètre.</p>';
+  const cc=cap.concordance_tl_ocr;
+  const badge = cc==null?'' : `<span class="confp ${cc>=0.95?'MEASURED':cc>=0.8?'OBSERVED':'INFERRED'}">concordance ${cc}</span>`;
+  return `<div class="grid2">
+    ${kv('PDF',cap.pdf)}${kv('pages',cap.pages)}
+    ${kv('source retenue',cap.source_retenue)}${kv('langue OCR',cap.langue_ocr)}
+    ${kv('car. couche texte',cap.text_layer_chars)}${kv('car. OCR',cap.ocr_chars)}
+    ${kv('couche texte saine',cap.text_layer_sain===true?'oui':cap.text_layer_sain===false?'non':'')}
+  </div><div style="margin-top:8px">${badge}</div>
+  ${cap.erreur_ocr?`<p class="note">Erreur OCR : ${esc(cap.erreur_ocr)}</p>`:''}`;
+}
+function stepExtraction(x){
+  if(!x) return '<p class="note">Aucune extraction structurée (source absente).</p>';
+  const rows=[['objet','objet'],['ouverture','date_ouverture'],['montant estimé','montant_estime_dh']];
+  return `<table class="xt"><thead><tr><th></th><th>base (origine)</th><th>courant (après amendements)</th></tr></thead><tbody>`+
+    rows.map(([lbl,k])=>{
+      const a=x.base?x.base[k]:null, b=x.courant?x.courant[k]:null;
+      const diff=(a!=null&&b!=null&&String(a)!==String(b));
+      return `<tr><td class="cle">${lbl}</td><td>${esc(a)}</td><td class="${diff?'chg':''}">${esc(b)}</td></tr>`;
+    }).join('')+`</tbody></table>`;
+}
+function stepReconcil(rec){
+  if(!rec) return '<p class="note">Version unique — aucun rectificatif publié.</p>';
+  return rec.versions.map(v=>`
+    <div class="rectbox">
+      <div class="rect-h"><span class="mono">${esc(v.document)}</span>
+        <span class="pill">${esc(v.type)}</span><span class="tl-sub">${esc(v.date)}</span>
+        <span class="mono h" style="margin-left:auto">${esc((v.sha256||'').slice(0,12))}</span></div>
+      ${v.champs.map(ch=>{
+        const applied=/appliqu/i.test(ch.statut||''), susp=/suspend/i.test(ch.statut||'');
+        const cls=applied?'ok':susp?'warn':'';
+        return `<div class="champ">
+          <span class="cle">${esc(ch.champ)}</span>
+          <span class="av">${esc(ch.avant)}</span><span class="arrow">→</span><span class="ap">${esc(ch.apres)}</span>
+          <span class="statut ${cls}">${esc(ch.statut)}</span>
+          ${(ch.problemes&&ch.problemes.length)?`<span class="prob">⚠ ${esc(ch.problemes.join('; '))}</span>`:''}
+        </div>`;
+      }).join('')}
+    </div>`).join('')+
+    '<p class="note">Un rectificatif « suspendu » n’est jamais appliqué en dernier-gagne : il exige une validation humaine explicite.</p>';
+}
+function stepControles(c){
+  if(c==null) return '<p class="note">Accès restreint à votre rôle.</p>';
+  if(c.masque) return `<div class="masked">${c.n} signalement(s), contenu masqué pour votre rôle.</div>`;
+  if(!c.length) return '<p class="note">Aucun signalement.</p>';
+  const ord={critique:0,majeur:1,mineur:2};
+  return [...c].sort((a,b)=>ord[a.severite]-ord[b.severite]).map(flagCard).join('');
+}
+function stepValidation(v){
+  if(!v) return '<p class="note">Accès restreint.</p>';
+  let h=`<p class="note">${v.peut_valider?'Vous pouvez promouvoir un signalement en constat (autorité magistrat).':'Consultation — la promotion en constat est réservée au magistrat rapporteur.'} · <b>${v.en_attente}</b> en attente.</p>`;
+  if(v.verdicts&&v.verdicts.length){
+    h+='<div class="jlist">'+v.verdicts.map(b=>`<div class="jrow"><span class="t">constat ${esc(b.claim_id||'')}</span><span class="ok-badge">${esc(b.verdict)}</span><span>${esc(b.actor)}</span><span class="h">${esc(b.hash10)}</span></div>`).join('')+'</div>';
+  } else { h+='<p class="note">Aucun constat validé pour l’instant.</p>'; }
+  return h;
+}
+function stepLivrables(l){
+  if(l==null) return '<p class="note">Accès restreint.</p>';
+  if(!l.length) return '<p class="note">Aucun livrable rattaché.</p>';
+  return '<div class="jlist">'+l.map(x=>`<div class="jrow"><span class="t mono">${esc(x.fichier)}</span><span>${esc(x.titre||'')}</span><span class="h">${x.octets} o</span></div>`).join('')+'</div>';
+}
+function stepJournal(j){
+  if(j==null) return '<p class="note">Accès restreint.</p>';
+  if(!j.length) return '<p class="note">Aucun bloc de journal ne référence ce marché.</p>';
+  return '<div class="jlist">'+j.map(b=>`<div class="jrow"><span class="t">${esc(b.type)}</span><span class="h">${esc(b.hash10)}</span><span>${esc(b.actor)}</span><span class="h">${esc(b.ts||'')}</span></div>`).join('')+'</div>';
+}
+
+function tenderView(){
+  const t=TEN; if(!t) return doss();
+  let h=`<a class="back" onclick="go('dossiers')">← tous les dossiers</a>`+
+    head('dossier · cycle complet de bout en bout',t.reference)+
+    `<div class="doss-sev big">${sevChips(t.par_severite)}<span class="chip">${t.n_signalements} signalement(s)</span></div>`+
+    '<ol class="timeline">'+
+    step(1,'Collecte','source & métadonnées', stepCollecte(t.collecte))+
+    step(2,'Capture','OCR FR + AR, fidélité mesurée', stepCapture(t.capture))+
+    step(3,'Extraction','champs structurés', stepExtraction(t.extraction))+
+    step(4,'Réconciliation','versions & rectificatifs', stepReconcil(t.reconciliation))+
+    step(5,'Contrôles','signalements détectés', stepControles(t.controles))+
+    step(6,'Validation','humain dans la boucle', stepValidation(t.validation))+
+    step(7,'Livrables','pièces produites', stepLivrables(t.livrables))+
+    step(8,'Journal','preuve chaînée (hash)', stepJournal(t.journal))+
+    '</ol>';
+  return h;
+}
 
 function dash(){
   const d=D.dashboard; if(!d) return '<p class="empty">Accès restreint.</p>';
@@ -107,4 +248,9 @@ function jour(){
     <h2 style="margin-top:22px">Blocs récents</h2>
     ${j.recents.map(b=>`<div class="jrow"><span class="t">${b.type}</span><span class="h">${b.hash10}</span><span>${(b.confiance||'—')}</span><span class="h">${b.ts}</span></div>`).join('')}`;
 }
+// open a dossier when its card is clicked (event delegation survives re-renders)
+document.getElementById('main').addEventListener('click', e=>{
+  const card=e.target.closest('.doss-card');
+  if(card && card.dataset.ref){ openTender(card.dataset.ref); }
+});
 boot();

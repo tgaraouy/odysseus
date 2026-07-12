@@ -60,6 +60,49 @@ h2{font-family:var(--serif);font-weight:500;font-size:21px;margin:0 0 2px}
 .confp{padding:1px 6px;border-radius:3px;font-size:10px;font-family:var(--mono)}
 .MEASURED{background:rgba(127,191,151,.16);color:var(--measured)}.OBSERVED{background:rgba(143,180,222,.16);color:var(--observed)}
 .INFERRED{background:rgba(217,169,78,.16);color:var(--inferred)}.CLAIMED{background:rgba(167,158,140,.16);color:var(--claimed)}
+/* dossiers list */
+.doss-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:20px}
+.doss-card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px 17px;cursor:pointer;transition:border-color .12s,transform .12s}
+.doss-card:hover{border-color:var(--seal);transform:translateY(-1px)}
+.doss-ref{font-size:15px;font-weight:700;letter-spacing:-.02em;margin-bottom:9px}
+.doss-sev{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.doss-sev.big{margin:14px 0 4px}
+.chip{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--fg-3)}
+.chip.crit{color:var(--crit);border-color:rgba(198,90,82,.45)}.chip.maj{color:var(--maj);border-color:rgba(217,169,78,.4)}.chip.min{color:var(--min)}
+.doss-meta{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--fg-3);margin-bottom:12px}
+.doss-meta .ok{color:var(--measured)}.doss-meta .off{color:var(--maj)}
+.doss-open{font-family:var(--mono);font-size:12px;color:var(--observed)}
+/* timeline */
+.back{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--observed);text-decoration:none;cursor:pointer;margin-bottom:6px}
+.timeline{list-style:none;margin:22px 0 0;padding:0}
+.tl-step{position:relative;display:flex;gap:16px;padding:0 0 26px 0}
+.tl-step:not(:last-child)::before{content:'';position:absolute;left:15px;top:32px;bottom:0;width:1px;background:var(--line)}
+.tl-n{flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;color:var(--fg-2);z-index:1}
+.tl-body{flex:1;min-width:0}
+.tl-h{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.tl-h b{font-family:var(--serif);font-size:18px;font-weight:500}
+.tl-sub{font-size:12px;color:var(--fg-3)}
+.tl-c{font-size:13.5px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 22px}
+.kv{display:flex;gap:10px;font-size:13px;color:var(--fg-2);padding:2px 0}
+.kv .cle{flex:0 0 120px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
+.kv .h{font-size:11px;color:var(--fg-3)}
+table.xt{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+table.xt th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);font-weight:400;padding:5px 10px;border-bottom:1px solid var(--line)}
+table.xt td{padding:6px 10px;border-bottom:1px solid var(--line);color:var(--fg-2);vertical-align:top}
+table.xt td.cle{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;color:var(--fg-3)}
+table.xt td.chg{color:var(--inferred);background:rgba(217,169,78,.08)}
+.rectbox{border:1px solid var(--line);border-radius:8px;margin:10px 0;overflow:hidden}
+.rect-h{display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--panel-2);border-bottom:1px solid var(--line);font-size:13px}
+.champ{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 13px;border-bottom:1px solid var(--line);font-size:13px}
+.champ:last-child{border-bottom:none}
+.champ .cle{flex:0 0 118px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
+.champ .av{color:var(--fg-3);text-decoration:line-through}.champ .arrow{color:var(--fg-3)}.champ .ap{color:var(--fg);font-weight:500}
+.champ .statut{margin-left:auto;font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--fg-3)}
+.champ .statut.ok{color:var(--measured);border-color:rgba(127,191,151,.4)}
+.champ .statut.warn{color:var(--crit);border-color:rgba(198,90,82,.5);background:rgba(198,90,82,.1)}
+.champ .prob{font-size:11px;color:var(--crit);flex-basis:100%}
+.jlist{margin-top:8px}
 </style></head>
 <body>
 <aside class="side">
