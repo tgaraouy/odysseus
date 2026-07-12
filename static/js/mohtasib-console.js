@@ -168,7 +168,7 @@ function stepValidation(v){
 function stepLivrables(l){
   if(l==null) return '<p class="note">Accès restreint.</p>';
   if(!l.length) return '<p class="note">Aucun livrable rattaché.</p>';
-  return '<div class="jlist">'+l.map(x=>`<div class="jrow"><span class="t mono">${esc(x.fichier)}</span><span>${esc(x.titre||'')}</span><span class="h">${x.octets} o</span></div>`).join('')+'</div>';
+  return '<div class="jlist">'+l.map(x=>`<div class="jrow lrow" data-livrable="${esc(x.fichier)}"><span class="t mono">${esc(x.fichier)}</span><span>${esc(x.titre||'')}</span><span class="h">${x.octets} o</span><span class="open-l">ouvrir →</span></div>`).join('')+'</div>';
 }
 function stepJournal(j){
   if(j==null) return '<p class="note">Accès restreint.</p>';
@@ -267,7 +267,55 @@ function jour(){
     ${j.recents.map(b=>`<div class="jrow"><span class="t">${b.type}</span><span class="h">${b.hash10}</span><span>${(b.confiance||'—')}</span><span class="h">${b.ts}</span></div>`).join('')}`;
 }
 // open a dossier when its card is clicked (event delegation survives re-renders)
+// minimal, dependency-free Markdown → HTML for the deliverables (headings,
+// blockquotes, bold, code, nested bullet lists). Everything is escaped first.
+function md2html(md){
+  // italic only when _..._ is a standalone token — never inside AO_07_2024 refs
+  const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[\s(])_([^_]+?)_(?=[\s.,;:)]|$)/g,'$1<em>$2</em>')
+    .replace(/`([^`]+?)`/g,'<code>$1</code>');
+  let html='', inList=false;
+  const closeList=()=>{ if(inList){ html+='</ul>'; inList=false; } };
+  for(const raw of String(md).split('\n')){
+    const line=raw.replace(/\s+$/,'');
+    if(!line.trim()){ closeList(); continue; }
+    let m;
+    if(m=line.match(/^(#{1,4})\s+(.*)/)){ closeList(); const n=m[1].length; html+=`<h${n}>${inl(m[2])}</h${n}>`; continue; }
+    if(m=line.match(/^>\s?(.*)/)){ closeList(); html+=`<blockquote>${inl(m[1])}</blockquote>`; continue; }
+    if(m=line.match(/^(\s*)[-*]\s+(.*)/)){ if(!inList){ html+='<ul>'; inList=true; } html+=`<li class="${m[1].length>=2?'sub':''}">${inl(m[2])}</li>`; continue; }
+    if(/^(-{3,}|_{3,})$/.test(line)){ closeList(); html+='<hr>'; continue; }
+    closeList(); html+=`<p>${inl(line)}</p>`;
+  }
+  closeList();
+  return html;
+}
+function showDoc(title, bodyHtml){
+  let ov=document.getElementById('doc-ov');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='doc-ov'; ov.className='doc-ov';
+    ov.innerHTML='<div class="doc-panel"><div class="doc-bar"><b id="doc-title"></b><span class="doc-x" role="button" tabindex="0">✕ fermer</span></div><div class="doc-body markdown" id="doc-body"></div></div>';
+    document.body.appendChild(ov);
+    const close=()=>ov.classList.remove('on');
+    ov.addEventListener('click', e=>{ if(e.target===ov || e.target.classList.contains('doc-x')) close(); });
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape') close(); });
+  }
+  ov.querySelector('#doc-title').textContent=title;
+  ov.querySelector('#doc-body').innerHTML=bodyHtml;
+  ov.classList.add('on');
+}
+async function openLivrable(fichier){
+  showDoc(fichier, '<p class="note">Chargement…</p>');
+  try{
+    const r=await fetch('/api/mohtasib/livrable/'+encodeURIComponent(fichier),{credentials:'same-origin'});
+    if(!r.ok){ showDoc(fichier, '<p class="note">Livrable indisponible ('+r.status+').</p>'); return; }
+    const d=await r.json();
+    showDoc(d.titre||fichier, md2html(d.markdown||''));
+  }catch(e){ showDoc(fichier, '<p class="note">Erreur réseau.</p>'); }
+}
+
 document.getElementById('main').addEventListener('click', e=>{
+  const lrow=e.target.closest('.lrow');
+  if(lrow && lrow.dataset.livrable){ openLivrable(lrow.dataset.livrable); return; }
   const card=e.target.closest('.doss-card');
   if(card && card.dataset.ref){ location.hash='dossier='+encodeURIComponent(card.dataset.ref); }
 });

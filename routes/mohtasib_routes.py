@@ -444,4 +444,21 @@ def setup_mohtasib_routes(auth_manager):
         livrables = _livrables_index()
         return _build_dossier(ref, flags, access, livrables)
 
+    @router.get("/api/mohtasib/livrable/{fichier}")
+    def api_livrable(fichier: str, user: str = Depends(require_user)):
+        roles_csv = role_for_owner(user)
+        access = _access_for(roles_csv)
+        if "view" not in access.get("livrables", []):
+            raise HTTPException(403, "Accès refusé aux livrables pour votre rôle.")
+        # whitelist against the index — never trust the path (blocks traversal)
+        idx = {l["fichier"]: l for l in _livrables_index()}
+        if fichier not in idx:
+            raise HTTPException(404, f"Livrable inconnu: {fichier}")
+        try:
+            with open(os.path.join(_DATA, "livrables", fichier), encoding="utf-8") as f:
+                md = f.read()
+        except Exception as e:
+            raise HTTPException(500, str(e))
+        return {"fichier": fichier, "titre": idx[fichier].get("titre"), "markdown": md}
+
     return router
