@@ -5,6 +5,7 @@ const SECTIONS = [
   {id:'validation',  label:'Validation'},
   {id:'ethique',     label:'Éthique & probité'},
   {id:'metriques',   label:'Métriques'},
+  {id:'conformite',  label:'Conformité au défi'},
   {id:'journal',     label:'Journal & assurance'},
 ];
 const GLY={critique:'▲',majeur:'◆',mineur:'•'};
@@ -51,7 +52,7 @@ async function route(){
 function render(){
   const m=document.getElementById('main');
   if(active==='dossiers' && TEN){ m.innerHTML = tenderView(); return; }
-  const R={dashboard:dash,dossiers:doss,signalements:sig,validation:val,ethique:eth,metriques:met,journal:jour}[active];
+  const R={dashboard:dash,dossiers:doss,signalements:sig,validation:val,ethique:eth,metriques:met,conformite:conf,journal:jour}[active];
   m.innerHTML = R? R() : '<p class="empty">—</p>';
 }
 function head(eb,h){ return `<div class="eyebrow">${eb}</div><h1>${h}</h1>`; }
@@ -168,7 +169,7 @@ function stepValidation(v){
 function stepLivrables(l){
   if(l==null) return '<p class="note">Accès restreint.</p>';
   if(!l.length) return '<p class="note">Aucun livrable rattaché.</p>';
-  return '<div class="jlist">'+l.map(x=>`<div class="jrow lrow" data-livrable="${esc(x.fichier)}"><span class="t mono">${esc(x.fichier)}</span><span>${esc(x.titre||'')}</span><span class="h">${x.octets} o</span><span class="open-l">ouvrir →</span></div>`).join('')+'</div>';
+  return '<div class="jlist">'+l.map(x=>`<div class="jrow lrow" data-livrable="${esc(x.fichier)}"><span class="t mono">${esc(x.fichier)}</span><span>${esc(x.titre||'')}</span><span class="h">${x.octets} o</span><a class="dl" href="/api/mohtasib/livrable-docx/${esc(x.fichier.replace(/\.md$/,'.docx'))}" download onclick="event.stopPropagation()">.docx ↓</a><span class="open-l">ouvrir →</span></div>`).join('')+'</div>';
 }
 function stepJournal(j){
   if(j==null) return '<p class="note">Accès restreint.</p>';
@@ -255,6 +256,30 @@ function met(){
   }
   return html;
 }
+function conf(){
+  const c=D.conformite; if(!c) return '<p class="empty">Accès restreint.</p>';
+  if(c.erreur) return head('assurance','Conformité au défi')+`<p class="empty">Validateur indisponible : ${esc(c.erreur)}</p>`;
+  const r=c.resume||{};
+  const badge=s=>`<span class="cf-b cf-${s}">${s}</span>`;
+  let html=head('World Bank GovTech 2026 · validé contre preuves réelles','Conformité au défi')+
+    `<div class="tiles">
+      <div class="tile"><div class="k">Conforme</div><div class="v" style="color:var(--measured)">${r.PASS||0}</div></div>
+      <div class="tile"><div class="k">Partiel</div><div class="v" style="color:var(--inferred)">${r.PARTIAL||0}</div></div>
+      <div class="tile"><div class="k">Écart</div><div class="v" style="color:${(r.GAP||0)?'var(--crit)':'var(--fg-3)'}">${r.GAP||0}</div></div>
+      <div class="tile"><div class="k">Exigences</div><div class="v">${c.n}</div></div>
+    </div>
+    <p class="note">Chaque exigence du cahier des charges est confrontée à une preuve réelle
+    (contrôle exécuté sur données réelles, livrable généré, métrique mesurée, cellule RBAC).
+    Le statut est <b>dérivé de la preuve</b>, ré-exécutable via <span class="mono">spec_conformance.py</span> ; les écarts sont nommés, jamais masqués.</p>`;
+  html+=c.resultats.map(x=>`
+    <div class="cf-row cf-${x.status}">
+      <div class="cf-h"><span class="mono cf-id">${esc(x.id)}</span>${badge(x.status)}
+        <span class="mono cf-sec">${esc(x.section)}</span><b>${esc(x.requirement)}</b></div>
+      <div class="cf-ev"><span class="cle">preuve</span><span>${esc(x.evidence||'—')}</span></div>
+      <div class="cf-note"><span class="confp ${esc((x.confidence||'').split('/')[0])}">${esc(x.confidence)}</span> ${esc(x.note)}</div>
+    </div>`).join('');
+  return html;
+}
 function jour(){
   const j=D.journal; if(!j) return '<p class="empty">Accès restreint.</p>';
   if(j.erreur) return head('assurance','Journal de preuve')+`<p class="empty">${j.erreur}</p>`;
@@ -289,17 +314,20 @@ function md2html(md){
   closeList();
   return html;
 }
-function showDoc(title, bodyHtml){
+function showDoc(title, bodyHtml, docxName){
   let ov=document.getElementById('doc-ov');
   if(!ov){
     ov=document.createElement('div'); ov.id='doc-ov'; ov.className='doc-ov';
-    ov.innerHTML='<div class="doc-panel"><div class="doc-bar"><b id="doc-title"></b><span class="doc-x" role="button" tabindex="0">✕ fermer</span></div><div class="doc-body markdown" id="doc-body"></div></div>';
+    ov.innerHTML='<div class="doc-panel"><div class="doc-bar"><b id="doc-title"></b><span class="doc-actions"><a id="doc-dl" class="dl" download>.docx ↓</a><span class="doc-x" role="button" tabindex="0">✕ fermer</span></span></div><div class="doc-body markdown" id="doc-body"></div></div>';
     document.body.appendChild(ov);
     const close=()=>ov.classList.remove('on');
     ov.addEventListener('click', e=>{ if(e.target===ov || e.target.classList.contains('doc-x')) close(); });
     document.addEventListener('keydown', e=>{ if(e.key==='Escape') close(); });
   }
   ov.querySelector('#doc-title').textContent=title;
+  const dl=ov.querySelector('#doc-dl');
+  if(docxName){ dl.href='/api/mohtasib/livrable-docx/'+encodeURIComponent(docxName); dl.style.display=''; }
+  else { dl.style.display='none'; }
   ov.querySelector('#doc-body').innerHTML=bodyHtml;
   ov.classList.add('on');
 }
@@ -309,7 +337,7 @@ async function openLivrable(fichier){
     const r=await fetch('/api/mohtasib/livrable/'+encodeURIComponent(fichier),{credentials:'same-origin'});
     if(!r.ok){ showDoc(fichier, '<p class="note">Livrable indisponible ('+r.status+').</p>'); return; }
     const d=await r.json();
-    showDoc(d.titre||fichier, md2html(d.markdown||''));
+    showDoc(d.titre||fichier, md2html(d.markdown||''), d.docx);
   }catch(e){ showDoc(fichier, '<p class="note">Erreur réseau.</p>'); }
 }
 

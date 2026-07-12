@@ -418,6 +418,21 @@ def setup_mohtasib_routes(auth_manager):
                     "en_attente": len([f for f in tf if f.get("statut") != "valide"]),
                 })
 
+        # conformité au défi — the spec_conformance validator, run live (meta-assurance)
+        conformite = None
+        if visible("dashboard") or visible("metriques"):
+            try:
+                import importlib
+                if _DATA not in sys.path:
+                    sys.path.insert(0, _DATA)
+                import spec_conformance as SC
+                importlib.reload(SC)  # re-read flags/metrics/livrables on each call
+                res = SC.build()
+                conformite = {"resultats": res, "n": len(res),
+                              "resume": dict(Counter(r["status"] for r in res))}
+            except Exception as e:
+                conformite = {"erreur": str(e)}
+
         return {
             "user": user, "roles": roles_csv.split(",") if roles_csv else [],
             "access": access,
@@ -428,6 +443,7 @@ def setup_mohtasib_routes(auth_manager):
             "validation": validation,
             "metriques": metrics if visible("metriques") else None,
             "journal": journal_info,
+            "conformite": conformite,
         }
 
     @router.get("/api/mohtasib/tender/{ref:path}")
@@ -459,6 +475,28 @@ def setup_mohtasib_routes(auth_manager):
                 md = f.read()
         except Exception as e:
             raise HTTPException(500, str(e))
-        return {"fichier": fichier, "titre": idx[fichier].get("titre"), "markdown": md}
+        docx = fichier[:-3] + ".docx" if fichier.endswith(".md") else fichier + ".docx"
+        has_docx = os.path.exists(os.path.join(_DATA, "livrables", docx))
+        return {"fichier": fichier, "titre": idx[fichier].get("titre"), "markdown": md,
+                "docx": docx if has_docx else None}
+
+    @router.get("/api/mohtasib/livrable-docx/{fichier}")
+    def api_livrable_docx(fichier: str, user: str = Depends(require_user)):
+        roles_csv = role_for_owner(user)
+        access = _access_for(roles_csv)
+        if "view" not in access.get("livrables", []):
+            raise HTTPException(403, "Accès refusé aux livrables pour votre rôle.")
+        # only .docx whose .md is a known livrable (blocks traversal + arbitrary files)
+        if not fichier.endswith(".docx"):
+            raise HTTPException(404, "Format attendu: .docx")
+        known_md = {l["fichier"] for l in _livrables_index()}
+        if (fichier[:-5] + ".md") not in known_md:
+            raise HTTPException(404, f"Livrable inconnu: {fichier}")
+        path = os.path.join(_DATA, "livrables", fichier)
+        if not os.path.exists(path):
+            raise HTTPException(404, ".docx non généré")
+        return FileResponse(
+            path, filename=fichier,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     return router
