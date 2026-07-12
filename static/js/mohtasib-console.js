@@ -217,7 +217,7 @@ function flagCard(f){
     <span class="confp ${conf}">${conf}</span>
     <span class="conf">conf. ${(f.confiance||0).toFixed?f.confiance.toFixed(2):f.confiance}</span>
   </div><div class="flag-b">
-    <div><span class="cle">marché</span>${f.tender||'—'}</div>
+    <div><span class="cle">marché</span>${f.tender?`<a class="tlink" href="#dossier=${encodeURIComponent(f.tender)}">${esc(f.tender)} →</a>`:'—'}</div>
     <div><span class="cle">attendu</span>${f.attendu||'—'}</div>
     <div><span class="cle">observé</span>${f.observe||'—'}</div>
     <div><span class="cle">source</span>${f.source||'—'}</div>
