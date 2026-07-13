@@ -104,6 +104,15 @@ table.xt td.chg{color:var(--inferred);background:rgba(217,169,78,.08)}
 .champ .prob{font-size:11px;color:var(--crit);flex-basis:100%}
 .jlist{margin-top:8px}
 .cite-txt{color:var(--observed);font-size:12px}
+/* priorisation (DSS) */
+.prow{display:flex;gap:16px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.pscore{flex:0 0 90px;position:relative;height:34px;display:flex;align-items:center}
+.pnum{font-family:var(--serif);font-size:24px;color:var(--fg);z-index:1;width:34px;text-align:right}
+.pbar{position:absolute;left:44px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--maj),var(--seal));min-width:3px}
+.pbody{flex:1;min-width:0}
+.ph{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.pobjet{font-size:13px;color:var(--fg-2);margin:3px 0}
+.pdetail{font-size:11px;color:var(--fg-3)}
 .dl{font-family:var(--mono);font-size:11px;color:var(--measured);text-decoration:none;border:1px solid rgba(127,191,151,.4);border-radius:4px;padding:2px 7px;white-space:nowrap}
 .dl:hover{background:rgba(127,191,151,.12)}
 .doc-actions{display:flex;align-items:center;gap:14px}

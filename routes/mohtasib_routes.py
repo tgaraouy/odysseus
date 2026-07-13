@@ -460,6 +460,15 @@ def setup_mohtasib_routes(auth_manager):
             except Exception as e:
                 inter_marche = {"erreur": str(e)}
 
+        # priorisation (DSS) — the OCDS export's deterministic risk ranking
+        priorisation = None
+        if visible("dashboard") or visible("signalements"):
+            _o = _read_json(os.path.join(_DATA, "ocds.json"), None)
+            if _o:
+                priorisation = {"ranking": _o.get("priorisation", []),
+                                "n_releases": len(_o.get("releases", [])),
+                                "note": _o.get("note")}
+
         # conformité au défi — the spec_conformance validator, run live (meta-assurance)
         conformite = None
         if visible("dashboard") or visible("metriques"):
@@ -480,6 +489,7 @@ def setup_mohtasib_routes(auth_manager):
             "access": access,
             "dashboard": dashboard if visible("dashboard") or "exists" in access.get("dashboard", []) else None,
             "dossiers": dossiers,
+            "priorisation": priorisation,
             "signalements": signalements,
             "inter_marche": inter_marche,
             "ethique": ethique,
@@ -542,5 +552,15 @@ def setup_mohtasib_routes(auth_manager):
         return FileResponse(
             path, filename=fichier,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    @router.get("/api/mohtasib/ocds")
+    def api_ocds(user: str = Depends(require_user)):
+        access = _access_for(role_for_owner(user))
+        if not (access.get("dashboard") or access.get("signalements")):
+            raise HTTPException(403, "Accès refusé à l'export OCDS pour votre rôle.")
+        path = os.path.join(_DATA, "ocds.json")
+        if not os.path.exists(path):
+            raise HTTPException(404, "Export OCDS non généré")
+        return FileResponse(path, filename="mohtasib-ocds.json", media_type="application/json")
 
     return router

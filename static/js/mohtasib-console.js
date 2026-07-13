@@ -1,5 +1,6 @@
 const SECTIONS = [
   {id:'dashboard',   label:'Tableau de bord'},
+  {id:'priorisation',label:'Priorisation'},
   {id:'dossiers',    label:'Dossiers'},
   {id:'signalements',label:'Signalements'},
   {id:'inter_marche',label:'Schémas inter-marchés'},
@@ -53,7 +54,7 @@ async function route(){
 function render(){
   const m=document.getElementById('main');
   if(active==='dossiers' && TEN){ m.innerHTML = tenderView(); return; }
-  const R={dashboard:dash,dossiers:doss,signalements:sig,inter_marche:inter,validation:val,ethique:eth,metriques:met,conformite:conf,journal:jour}[active];
+  const R={dashboard:dash,priorisation:prio,dossiers:doss,signalements:sig,inter_marche:inter,validation:val,ethique:eth,metriques:met,conformite:conf,journal:jour}[active];
   m.innerHTML = R? R() : '<p class="empty">—</p>';
 }
 function head(eb,h){ return `<div class="eyebrow">${eb}</div><h1>${h}</h1>`; }
@@ -208,6 +209,26 @@ function dash(){
   </div>
   <p class="note">Couverture exhaustive du périmètre ingéré (pas d’échantillon). Un signalement reste
   <span class="mono">pending</span> jusqu’à validation d’un magistrat.</p>`;
+}
+function prio(){
+  const p=D.priorisation; if(!p) return '<p class="empty">Accès restreint.</p>';
+  const rk=p.ranking||[];
+  const maxs=Math.max(1,...rk.map(r=>r.score||0));
+  let html=head('DSS · marchés à investiguer en priorité','Priorisation')+
+    `<p class="note">Classement par <b>score de risque déterministe</b> (somme pondérée des signaux — explicable, ligne à ligne). Données exportées au standard <span class="mono">OCDS 1.1</span> · <a class="dl" href="/api/mohtasib/ocds" download>ocds.json ↓</a></p>
+    <div class="masked" style="border-color:rgba(143,180,222,.3);background:rgba(143,180,222,.08);color:var(--fg-2)">${esc(p.note||'')}</div>`;
+  html+='<div style="margin-top:16px">'+rk.map(r=>{
+    const w=Math.round(100*(r.score||0)/maxs);
+    const isDemo=/AO[-_]/.test(r.marche||'');
+    const ref=isDemo?`<a class="tlink" href="#dossier=${encodeURIComponent(r.marche)}">${esc(r.marche)} →</a>`:`<span class="mono">${esc(r.marche)}</span>`;
+    return `<div class="prow">
+      <div class="pscore"><span class="pnum">${r.score}</span><span class="pbar" style="width:${w}%"></span></div>
+      <div class="pbody"><div class="ph">${ref} <span class="tl-sub">${esc(r.type)}</span></div>
+        <div class="pobjet">${esc(r.objet||'—')}</div>
+        <div class="pdetail mono">${(r.detail||[]).map(esc).join(' · ')||'—'}</div></div>
+    </div>`;
+  }).join('')+'</div>';
+  return html;
 }
 function flagCard(f){
   const conf = (f.source&&(f.source.includes('LLM')||f.source.includes('sémantique')))?'INFERRED'
