@@ -41,6 +41,19 @@ def _read_json(path, default):
         return default
 
 
+def _enrich_citations(flags):
+    """Attach each control's Decree 2-22-431 citation (from the mounted registry)."""
+    try:
+        if _DATA not in sys.path:
+            sys.path.insert(0, _DATA)
+        import citations as CIT
+        for f in flags:
+            f["citation"] = CIT.citer(f.get("controle", ""))
+    except Exception:
+        pass
+    return flags
+
+
 def _rbac_matrix():
     """Load the bridge's matrix from the mounted prototype (single source)."""
     try:
@@ -357,6 +370,7 @@ def setup_mohtasib_routes(auth_manager):
             return action in access.get(section, [])
 
         flags = _read_json(os.path.join(_DATA, "flags.json"), [])
+        _enrich_citations(flags)  # attach the Decree 2-22-431 citation to each alert
         metrics = _read_json(os.path.join(_DATA, "metrics.json"), {})
 
         # dashboard aggregates (always computed; shown if dashboard access)
@@ -430,6 +444,15 @@ def setup_mohtasib_routes(auth_manager):
                 importlib.reload(COL)
                 _cd, _recs, _label = COL.load()
                 inter_marche = COL.detect(_cd, _recs, _label)
+                # attach the deterministic PDF-metadata forensics result (pre-computed)
+                inter_marche["forensics"] = _read_json(os.path.join(_DATA, "forensics.json"), None)
+                # citation per inter-marché signal
+                try:
+                    import citations as CIT
+                    for s in inter_marche.get("signaux", []):
+                        s["citation"] = CIT.citer(s.get("type", ""))
+                except Exception:
+                    pass
             except Exception as e:
                 inter_marche = {"erreur": str(e)}
 
@@ -470,6 +493,7 @@ def setup_mohtasib_routes(auth_manager):
         if not (access.get("dashboard") or access.get("signalements")):
             raise HTTPException(403, "Accès refusé à ce dossier pour votre rôle.")
         flags = _read_json(os.path.join(_DATA, "flags.json"), [])
+        _enrich_citations(flags)
         known = {f.get("tender") for f in flags}
         if ref not in known:
             raise HTTPException(404, f"Marché inconnu: {ref}")

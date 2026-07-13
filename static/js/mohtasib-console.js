@@ -224,6 +224,7 @@ function flagCard(f){
     <div><span class="cle">observé</span>${f.observe||'—'}</div>
     <div><span class="cle">source</span>${f.source||'—'}</div>
     <div><span class="cle">base</span>${f.base||'—'}</div>
+    ${f.citation?`<div><span class="cle">citation</span><span class="cite-txt">${esc(f.citation.citation||'')}</span></div>`:''}
   </div></div>`;
 }
 function sig(){
@@ -283,9 +284,27 @@ function inter(){
         ${s.marches&&s.marches.length?`<div><span class="cle">marchés</span>${s.marches.filter(Boolean).map(esc).join(', ')}</div>`:''}
         ${s.firmes&&s.firmes.length?`<div><span class="cle">entreprises</span>${s.firmes.map(esc).join(' · ')}</div>`:''}
         <div><span class="cle">base</span>${esc(s.base)}</div>
+        ${s.citation?`<div><span class="cle">citation</span>${esc(s.citation.citation||'')}</div>`:''}
         ${s.note_absence?`<div><span class="cle">lecture</span><em>${esc(s.note_absence)}</em></div>`:''}
       </div>
     </div>`).join('');
+  // deterministic PDF-metadata forensics (Phase 2)
+  const fx=im.forensics;
+  if(fx && fx.corpus){
+    const fc=fx.corpus;
+    html+=`<h2 style="margin-top:30px">Forensics métadonnées PDF <span class="tl-sub">déterministe · origine commune des offres</span></h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">PDF avec métadonnées</div><div class="v">${fc.n_avec_metadata}/${fc.n_pdf}</div></div>
+      <div class="tile"><div class="k">Collisions inter-firmes</div><div class="v" style="color:${(fx.signaux||[]).length?'var(--crit)':'var(--fg-3)'}">${(fx.signaux||[]).length}</div></div>
+      <div class="tile"><div class="k">Outils observés</div><div class="v" style="font-size:16px">${(fx.outils_observes||[]).length}</div></div>
+    </div>
+    <div class="masked" style="border-color:rgba(143,180,222,.3);background:rgba(143,180,222,.08);color:var(--fg-2)">${esc(fc.note||'')}</div>`;
+    if((fx.signaux||[]).length){
+      html+=(fx.signaux).map(s=>`<div class="flag sev-${s.severite}"><div class="flag-h"><span class="glyph">◆</span><span class="mono">[${esc(s.type)}]</span><strong>${esc(s.titre)}</strong><span class="confp ${esc(s.confiance)}">${esc(s.confiance)}</span></div><div class="flag-b"><div><span class="cle">sources</span>${(s.sources||[]).map(esc).join(' · ')}</div><div><span class="cle">base</span>${esc(s.base)}</div></div></div>`).join('');
+    } else {
+      html+='<p class="note">Aucune collision de métadonnées entre soumissionnaires distincts sur ce corpus (émetteur unique — résultat attendu). Logique de détection prouvée par le self-test <span class="mono">bid_forensics.py --selftest</span>.</p>';
+    }
+  }
   return html;
 }
 function conf(){
