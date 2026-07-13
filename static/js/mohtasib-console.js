@@ -288,6 +288,31 @@ function inter(){
         ${s.note_absence?`<div><span class="cle">lecture</span><em>${esc(s.note_absence)}</em></div>`:''}
       </div>
     </div>`).join('');
+  // fractionnement (contract splitting) — cross-market, same buyer
+  const fr=im.fractionnement;
+  if(fr && fr.corpus){
+    html+=`<h2 style="margin-top:30px">Fractionnement de la commande <span class="tl-sub">même acheteur · objets voisins · même période</span></h2>
+    <div class="masked" style="border-color:rgba(217,169,78,.3);background:rgba(217,169,78,.07);color:var(--fg-2)">${esc(fr.corpus.note||'')}</div>`;
+    html+=(fr.signaux||[]).map(s=>`
+      <div class="flag sev-${s.severite}"><div class="flag-h">
+        <span class="glyph">◆</span><span class="mono">[${esc(s.type)}]</span><strong>${esc(s.titre)}</strong>
+        <span class="confp ${esc(s.confiance)}">${esc(s.confiance)}</span></div>
+      <div class="flag-b">
+        ${(s.marches||[]).map((m,i)=>`<div><span class="cle">${i===0?'marchés':''}</span><span class="mono">${esc(m)}</span> — ${esc((s.objets||[])[i]||'')}</div>`).join('')}
+        <div><span class="cle">base</span>${esc(s.base)}</div>
+        ${s.citation?`<div><span class="cle">citation</span><span class="cite-txt">${esc(s.citation.citation||'')}</span></div>`:''}
+      </div></div>`).join('') || '<p class="note">Aucune grappe de fractionnement détectée.</p>';
+  }
+  // entity resolution transparency (ICE-ready)
+  const ent=im.entites;
+  if(ent && ent.n_entites){
+    const groups=(ent.entites||[]).filter(e=>e.n_alias>1);
+    html+=`<h2 style="margin-top:30px">Résolution d'entités <span class="tl-sub">${esc(ent.methode)} · ${ent.n_entites} entités</span></h2>
+    <p class="note">${esc(ent.note||'')}</p>`;
+    if(groups.length){
+      html+='<div class="jlist">'+groups.map(e=>`<div class="jrow"><span class="t mono">${esc(e.label)}</span><span>replie : ${e.alias.map(esc).join(' · ')}</span><span class="h">${esc(e.ice_statut)}</span></div>`).join('')+'</div>';
+    }
+  }
   // deterministic PDF-metadata forensics (Phase 2)
   const fx=im.forensics;
   if(fx && fx.corpus){
