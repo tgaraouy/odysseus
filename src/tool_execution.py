@@ -1656,6 +1656,11 @@ async def execute_tool_block(
                 args = json.loads(content) if content.strip().startswith("{") else {}
             except (json.JSONDecodeError, TypeError):
                 args = {}
+            # Mohtasib RBAC: force the caller's role from the AUTHENTICATED session,
+            # overriding anything the model supplied. The bridge trusts the role;
+            # so it must originate here, not from the model.
+            from src.mohtasib_rbac import inject_role
+            args = inject_role(tool, args, owner)
             desc = f"mcp: {tool}"
             result = await mcp.call_tool(tool, args)
         else:

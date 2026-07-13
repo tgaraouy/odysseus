@@ -1,6 +1,6 @@
 {
-  "name": "Helm",
-  "short_name": "Helm",
+  "name": "Mohtasib",
+  "short_name": "Mohtasib",
   "description": "Self-hosted AI chat with memory, documents, and tools",
   "start_url": "/",
   "scope": "/",

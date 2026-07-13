@@ -284,6 +284,12 @@ if AUTH_ENABLED:
             # Cloudflare tunnel / reverse proxy. Keep LOCALHOST_BYPASS=false for
             # network-exposed deployments regardless.
             if LOCALHOST_BYPASS and _is_trusted_loopback(request):
+                # Under bypass there is no session, so downstream code (Mohtasib
+                # RBAC role lookup, the console's require_user, the / → /mohtasib
+                # redirect) has no identity. Act as the admin — the single-admin
+                # loopback assumption that LOCALHOST_BYPASS already encodes.
+                if not getattr(request.state, "current_user", None):
+                    request.state.current_user = os.getenv("ODYSSEUS_ADMIN_USER", "admin")
                 return await call_next(request)
             if not auth_manager.is_configured:
                 # No users yet — redirect to login for first-time setup
@@ -509,6 +515,10 @@ webhook_manager = WebhookManager(api_key_manager=api_key_manager)
 # Auth
 auth_router = setup_auth_routes(auth_manager)
 app.include_router(auth_router)
+
+# Mohtasib — role assignment admin UI + API (RBAC)
+from routes.mohtasib_routes import setup_mohtasib_routes
+app.include_router(setup_mohtasib_routes(auth_manager))
 
 # Uploads
 from routes.upload_routes import setup_upload_routes
@@ -955,8 +965,7 @@ def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
     html = html.replace("{{CSP_NONCE}}", nonce)
     return HTMLResponse(html)
 
-@app.get("/")
-async def serve_index(request: Request):
+def _serve_app(request: Request):
     static_path = abs_join(BASE_DIR, "static/index.html")
     if os.path.exists(static_path):
         return _serve_html_with_nonce(request, static_path)
@@ -965,13 +974,34 @@ async def serve_index(request: Request):
         return _serve_html_with_nonce(request, root_path)
     raise HTTPException(404, "index.html not found")
 
+
+@app.get("/")
+async def serve_index(request: Request):
+    # Mohtasib: an authenticated user with a domain role LANDS on the console,
+    # not the generic agent app. The agent stays reachable at /agent.
+    user = getattr(request.state, "current_user", None)
+    if user and user not in ("api", "internal-tool"):
+        try:
+            from src.mohtasib_rbac import role_for_owner
+            if role_for_owner(user):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse("/mohtasib", status_code=302)
+        except Exception:
+            pass
+    return _serve_app(request)
+
+
+@app.get("/agent")
+async def serve_agent(request: Request):
+    return _serve_app(request)
+
 @app.get("/notes")
 async def serve_notes(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/calendar")
 async def serve_calendar(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 # Per-tool deep-link routes — all serve the same SPA, the JS auto-opens
 # the matching modal based on window.location.pathname. Each route also
@@ -979,27 +1009,27 @@ async def serve_calendar(request: Request):
 # bookmarks render with tool-specific icons.
 @app.get("/cookbook")
 async def serve_cookbook(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/email")
 async def serve_email(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/memory")
 async def serve_memory(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/gallery")
 async def serve_gallery(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/tasks")
 async def serve_tasks(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/library")
 async def serve_library(request: Request):
-    return await serve_index(request)
+    return _serve_app(request)
 
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):

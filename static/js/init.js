@@ -1,4 +1,4 @@
-// Helm UI — Initialization Scripts
+// Mohtasib UI — Initialization Scripts
 // ES6 module — extracted from index.html inline scripts
 
 import Storage from './storage.js';
