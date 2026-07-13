@@ -444,17 +444,18 @@ def setup_mohtasib_routes(auth_manager):
                 importlib.reload(COL)
                 _cd, _recs, _label = COL.load()
                 inter_marche = COL.detect(_cd, _recs, _label)
-                # attach deterministic PDF-metadata forensics + fractionnement (pre-computed)
+                # attach deterministic detectors (pre-computed): forensics, fractionnement, liens
                 inter_marche["forensics"] = _read_json(os.path.join(_DATA, "forensics.json"), None)
                 inter_marche["fractionnement"] = _read_json(os.path.join(_DATA, "fractionnement.json"), None)
-                # citation per inter-marché + fractionnement signal
+                inter_marche["liens"] = _read_json(os.path.join(_DATA, "liens_entreprises.json"), None)
+                # citation per signal across the detectors
                 try:
                     import citations as CIT
                     for s in inter_marche.get("signaux", []):
                         s["citation"] = CIT.citer(s.get("type", ""))
-                    fr = inter_marche.get("fractionnement") or {}
-                    for s in fr.get("signaux", []):
-                        s["citation"] = CIT.citer(s.get("type", ""))
+                    for grp in ("fractionnement", "liens"):
+                        for s in (inter_marche.get(grp) or {}).get("signaux", []):
+                            s["citation"] = CIT.citer(s.get("type", ""))
                 except Exception:
                     pass
             except Exception as e:

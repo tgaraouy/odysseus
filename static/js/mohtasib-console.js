@@ -334,6 +334,23 @@ function inter(){
       html+='<div class="jlist">'+groups.map(e=>`<div class="jrow"><span class="t mono">${esc(e.label)}</span><span>replie : ${e.alias.map(esc).join(' · ')}</span><span class="h">${esc(e.ice_statut)}</span></div>`).join('')+'</div>';
     }
   }
+  // same-owner / same-address related-party links (Velasco)
+  const li=im.liens;
+  if(li && li.corpus){
+    const lc=li.corpus;
+    html+=`<h2 style="margin-top:30px">Liens entre soumissionnaires <span class="tl-sub">même gérant · même siège</span></h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">Marchés</div><div class="v">${lc.n_marches}</div></div>
+      <div class="tile"><div class="k">Référentiel RC/ICE</div><div class="v" style="font-size:18px">${lc.registre_present?'présent':'absent'}</div></div>
+      <div class="tile"><div class="k">Liens détectés</div><div class="v" style="color:${(li.signaux||[]).length?'var(--crit)':'var(--fg-3)'}">${(li.signaux||[]).length}</div></div>
+    </div>
+    <div class="masked" style="border-color:rgba(217,169,78,.3);background:rgba(217,169,78,.07);color:var(--fg-2)">${esc(lc.note||'')}</div>`;
+    if((li.signaux||[]).length){
+      html+=(li.signaux).map(s=>`<div class="flag sev-${s.severite}"><div class="flag-h"><span class="glyph">▲</span><span class="mono">[${esc(s.type)}]</span><strong>${esc(s.titre)}</strong><span class="confp ${esc(s.confiance)}">${esc(s.confiance)}</span></div><div class="flag-b"><div><span class="cle">firmes</span>${(s.firmes||[]).map(esc).join(' · ')}</div><div><span class="cle">base</span>${esc(s.base)}</div>${s.citation?`<div><span class="cle">citation</span><span class="cite-txt">${esc(s.citation.citation||'')}</span></div>`:''}</div></div>`).join('');
+    } else {
+      html+='<p class="note">Aucun lien gérant/siège détecté (référentiel d\'entreprises absent — résultat attendu). Logique prouvée par <span class="mono">liens_entreprises.py --selftest</span>.</p>';
+    }
+  }
   // deterministic PDF-metadata forensics (Phase 2)
   const fx=im.forensics;
   if(fx && fx.corpus){
